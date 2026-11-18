@@ -31,11 +31,14 @@ namespace mailTester.Mail
             X509Certificate2 cert = null;
             SslPolicyErrors errors = SslPolicyErrors.RemoteCertificateNotAvailable;
             string chain = "", negotiated = "", failure = null;
+            bool internalCaHint = false;
             bool Capture(object sender, X509Certificate certificate, X509Chain path, SslPolicyErrors validation)
             {
                 cert?.Dispose();
                 cert = certificate == null ? null : X509CertificateLoader.LoadCertificate(certificate.GetRawCertData());
                 errors = validation;
+                internalCaHint = cert != null && (cert.Issuer.Contains("DC=", StringComparison.OrdinalIgnoreCase) ||
+                    cert.Issuer.Contains(".local", StringComparison.OrdinalIgnoreCase));
                 chain = path == null ? "(нет цепочки)" : string.Join("\n", path.ChainElements.Cast<X509ChainElement>().Select(e =>
                     e.Certificate.Subject + " | " + string.Join(", ", e.ChainElementStatus.Select(s => s.Status.ToString()))));
                 return validation == SslPolicyErrors.None; // NEVER accept invalid certificates.
@@ -82,8 +85,9 @@ namespace mailTester.Mail
                 bool valid = failure == null && errors == SslPolicyErrors.None && cert.NotBefore.ToUniversalTime() <= DateTime.UtcNow && days >= 0;
                 string san = string.Join("\n", cert.Extensions.Cast<X509Extension>().Where(x => x.Oid?.Value == "2.5.29.17").Select(x => x.Format(true)));
                 string detail = $"Subject: {cert.Subject}\nIssuer: {cert.Issuer}\nSAN: {san}\nNotBefore: {cert.NotBefore:O}\nNotAfter: {cert.NotAfter:O}\nДней до окончания: {Math.Floor(days)}\nSHA-256: {cert.GetCertHashString(System.Security.Cryptography.HashAlgorithmName.SHA256)}\nTLS: {negotiated}\nValidation: {errors}\nHandshake: {failure ?? "OK"}\nЦепочка:\n{chain}\nПроверялись TLS 1.2/1.3 и системное доверие; не HTTP-содержимое, не полный аудит протоколов.";
-                return new[] { new CheckFinding("TLS", endpoint, !valid ? CheckLevel.Error : days < 30 ? CheckLevel.Warning : CheckLevel.Ok,
-                    !valid ? "Сертификат/handshake не прошёл проверку" : $"Действует ещё {Math.Floor(days)} дн.", detail) };
+                if (internalCaHint) detail += "\nПризнаки корпоративного CA (issuer DN). Доверие проверено только в текущем Windows trust store; внешнее доверие не подтверждено. Это эвристика, не полный аудит CA.";
+                return new[] { new CheckFinding("TLS", endpoint, !valid ? CheckLevel.Error : days < 30 || internalCaHint ? CheckLevel.Warning : CheckLevel.Ok,
+                    !valid ? "Сертификат/handshake не прошёл проверку" : $"Действует ещё {Math.Floor(days)} дн." + (internalCaHint ? " (возможен внутренний CA)" : ""), detail) };
             }
         }
     }

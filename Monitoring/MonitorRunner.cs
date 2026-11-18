@@ -18,6 +18,7 @@ public sealed class MonitorRunner
         var items = input.ToArray();
         if (items.Any(x => x.Level == CheckLevel.Error)) return MonitorStatus.Error;
         if (items.Any(x => x.Level == CheckLevel.Warning)) return MonitorStatus.Warning;
+        if (items.Any(x => x.Level == CheckLevel.Unknown)) return MonitorStatus.Unknown;
         if (items.Any(x => x.Level == CheckLevel.Ok)) return MonitorStatus.Ok;
         return MonitorStatus.Unknown;
     }
@@ -54,7 +55,7 @@ public sealed class MonitorRunner
                 status = StatusOf(findings);
                 if(job.Kind==MonitorKind.Dnsbl && findings.All(x=>x.Level==CheckLevel.Skipped || x.Summary.StartsWith("UNKNOWN",StringComparison.OrdinalIgnoreCase)))
                     status=MonitorStatus.Unknown;
-                summary = string.Join(" | ", findings.Where(x => x.Level is CheckLevel.Error or CheckLevel.Warning).Take(3).Select(x => x.Summary));
+                summary = string.Join(" | ", findings.Where(x => x.Level is CheckLevel.Error or CheckLevel.Warning or CheckLevel.Unknown).Take(3).Select(x => x.Summary));
                 if (string.IsNullOrWhiteSpace(summary)) summary = findings.FirstOrDefault(x => x.Level == CheckLevel.Ok)?.Summary ?? "Нет подтверждённого результата";
                 detail = string.Join("\n\n", findings.Select(f => $"[{f.Level}] {f.Section} {f.Name}\n{f.Summary}\n{f.Detail}"));
             }

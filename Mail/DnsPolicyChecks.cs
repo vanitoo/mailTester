@@ -8,7 +8,7 @@ using System.Text.RegularExpressions;
 
 namespace mailTester.Mail
 {
-    public enum CheckLevel { Info, Ok, Warning, Error, Skipped }
+    public enum CheckLevel { Info, Ok, Warning, Error, Skipped, Unknown }
     public record CheckFinding(string Section, string Name, CheckLevel Level, string Summary, string Detail);
 
     public static class DnsPolicyChecks

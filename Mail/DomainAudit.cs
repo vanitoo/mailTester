@@ -16,12 +16,24 @@ namespace mailTester.Mail
             if (!domain.Contains('.')) throw new ArgumentException("Укажите зарегистрированное доменное имя.");
             var rows = (await InspectAsync(domain, selectors, progress, ct).ConfigureAwait(false)).Findings.ToList();
 
+            rows.Add(new("DNS", domain, CheckLevel.Info, "Источники разрешения имён",
+                "DNS-записи и PTR: " + resolver + ". TLS подключается по имени через системное разрешение Windows (DNS/hosts/cache). Эти результаты нельзя считать ответами одного резолвера."));
+            if (rows.Any(x => x.Name == domain + " A" && x.Level == CheckLevel.Unknown) ||
+                rows.Any(x => x.Name == domain + " AAAA" && x.Level == CheckLevel.Unknown))
+                rows.Add(await CompareSystemAddressesAsync(domain, ct).ConfigureAwait(false));
             progress?.Report("Регистрационные сведения и TLS сайта");
             var registration = RegistrationDiagnostics.InspectAsync(domain, progress, ct);
             var website = TlsDiagnostics.InspectAsync(domain, 443, TlsMode.Https, ct);
             var www = "www." + domain;
             var wwwIps = await Task.WhenAll(Query(www, QueryType.A, ct), Query(www, QueryType.AAAA, ct)).ConfigureAwait(false);
-            Task<IReadOnlyList<CheckFinding>> wwwTls = wwwIps.Any(x => !x.Failed && Addresses(x).Length > 0)
+            bool wwwResolved = wwwIps.Any(x => !x.Failed && Addresses(x).Length > 0);
+            if (wwwIps.Any(x => x.Failed))
+            {
+                var comparison = await CompareSystemAddressesAsync(www, ct).ConfigureAwait(false);
+                rows.Add(comparison);
+                wwwResolved |= comparison.Level == CheckLevel.Ok;
+            }
+            Task<IReadOnlyList<CheckFinding>> wwwTls = wwwResolved
                 ? TlsDiagnostics.InspectAsync(www, 443, TlsMode.Https, ct)
                 : Task.FromResult<IReadOnlyList<CheckFinding>>(new[] { new CheckFinding("TLS", www, CheckLevel.Skipped, wwwIps.Any(x => x.Failed) ? "DNS www не проверен" : "www не разрешается", "HTTPS не проверялся.") });
             await Task.WhenAll(registration, website, wwwTls).ConfigureAwait(false);
@@ -31,7 +43,7 @@ namespace mailTester.Mail
 
             progress?.Report("Проверка MX: SMTP STARTTLS, PTR/FCrDNS");
             var mx = await Query(domain, QueryType.MX, ct).ConfigureAwait(false);
-            var hosts = mx.Records.OfType<MxRecord>().OrderBy(x => x.Preference)
+            var hosts = (mx.Failed ? Enumerable.Empty<MxRecord>() : mx.Records.OfType<MxRecord>()).OrderBy(x => x.Preference)
                 .Select(x => x.Exchange.Value.TrimEnd('.')).Where(x => x.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
             var allIps = new HashSet<System.Net.IPAddress>();
             foreach (var host in hosts.Take(5))
@@ -39,15 +51,36 @@ namespace mailTester.Mail
                 // MX supports receiving SMTP; these addresses need not be the outbound MTA addresses.
                 var addresses = await Task.WhenAll(Query(host, QueryType.A, ct), Query(host, QueryType.AAAA, ct)).ConfigureAwait(false);
                 foreach (var ip in addresses.Where(x => !x.Failed).SelectMany(Addresses)) allIps.Add(ip);
+                if (addresses.Any(x=>x.Failed)) rows.Add(await CompareSystemAddressesAsync(host, ct).ConfigureAwait(false));
                 var cert = await TlsDiagnostics.InspectAsync(host, 25, TlsMode.SmtpStartTls, ct).ConfigureAwait(false);
                 rows.AddRange(cert);
             }
+            if (hosts.Length>0 && allIps.Count==0)
+                rows.Add(new("PTR",domain,CheckLevel.Skipped,"PTR не проверен: адреса MX не получены","Сначала восстановите разрешение адресов MX на выбранном резолвере. Системные адреса отдельно, не подменяют ответы DNS."));
             foreach (var ip in allIps.Take(10))
                 rows.AddRange(await CheckIpAsync(ip, false, progress, ct).ConfigureAwait(false));
             if (hosts.Length > 5 || allIps.Count > 10)
                 rows.Add(new("MX", domain, CheckLevel.Skipped, "Лимит комплексного аудита", "TLS: до 5 MX; PTR: до 10 адресов."));
             rows.Add(new("DNSBL", domain, CheckLevel.Info, "Для DNSBL укажите исходящий SMTP IP отдельно", "Входящие MX не обязательно отправляют почту. Автоматически не передаём адреса MX сторонним спискам."));
             return rows;
+        }
+
+        private static async Task<CheckFinding> CompareSystemAddressesAsync(string host,CancellationToken ct)
+        {
+            using var timeout=CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(5));
+            try
+            {
+                var addresses=await System.Net.Dns.GetHostAddressesAsync(host.TrimEnd('.'),timeout.Token).ConfigureAwait(false);
+                return new("DNS",host+" (OS)",addresses.Length>0?CheckLevel.Ok:CheckLevel.Unknown,
+                    addresses.Length>0?"Системное разрешение работает":"Системные адреса не получены",
+                    "Windows DNS/hosts/cache (не ответ выбранного резолвера): "+string.Join(", ",addresses.Select(x=>x.ToString())));
+            }
+            catch(OperationCanceledException) when(ct.IsCancellationRequested){throw;}
+            catch(Exception ex)
+            {
+                return new("DNS",host+" (OS)",CheckLevel.Unknown,"Системное разрешение не подтверждено",ex.GetType().Name);
+            }
         }
     }
 }

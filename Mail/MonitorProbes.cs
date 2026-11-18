@@ -34,7 +34,7 @@ public sealed partial class DnsDiagnosticEngine
         var result = replies.Select(x => Raw(x.Type == QueryType.MX ? "MX" : "DNS",x)).ToList();
         var mx = replies[2];
         var hosts = mx.Records.OfType<MxRecord>().ToArray();
-        if (mx.Failed || mx.Code == 3) result.Add(new("MX",domain,CheckLevel.Error,"MX DNS недоступен или NXDOMAIN",mx.Text));
+        if (mx.Failed || mx.Code == 3) result.Add(new("MX",domain,mx.Failed?CheckLevel.Unknown:CheckLevel.Error,mx.Failed?"MX DNS не проверен":"MX: NXDOMAIN",mx.Text));
         else if (hosts.Length == 0)
             result.Add(new("MX",domain,replies.Take(2).Any(x => !x.Failed && Addresses(x).Length > 0) ? CheckLevel.Warning : CheckLevel.Error,
                 "Нет явного MX","Проверьте implicit MX и назначение домена."));

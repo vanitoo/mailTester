@@ -30,7 +30,7 @@ namespace mailTester.Mail
             progress?.Report("PTR / forward-confirmed reverse DNS");
             var ptr = await Query(ReverseName(ip), QueryType.PTR, ct).ConfigureAwait(false);
             var names = ptr.Records.OfType<PtrRecord>().Select(x => x.PtrDomainName.Value).Distinct().ToArray();
-            rows.Add(new("PTR", ip.ToString(), ptr.Failed ? CheckLevel.Error : names.Length > 0 ? CheckLevel.Ok : CheckLevel.Warning,
+            rows.Add(new("PTR", ip.ToString(), ptr.Failed ? CheckLevel.Unknown : names.Length > 0 ? CheckLevel.Ok : CheckLevel.Warning,
                 ptr.Failed ? "Ошибка DNS" : names.Length == 0 ? "PTR отсутствует" : "PTR: " + string.Join(", ", names), ptr.Text));
             foreach (string name in names.Take(10))
             {
@@ -74,7 +74,7 @@ namespace mailTester.Mail
                     Addresses(answers[1]).Length == 0;
                 string detail = $"IP: {ip}\nОтвет: {result.Text}\nКонтроль +: {answers[0].Text}\nКонтроль -: {answers[1].Text}\nУчитывайте условия использования списка и ограничения публичного резолвера. PBL не обязательно означает спам.";
                 if (result.Failed || !controlsOk || codes.Any(x => !Listed(x)))
-                    rows.Add(new("DNSBL", zone, CheckLevel.Warning, "UNKNOWN: список/резолвер не подтверждён", detail));
+                    rows.Add(new("DNSBL", zone, CheckLevel.Unknown, "UNKNOWN: список/резолвер не подтверждён", detail));
                 else if (codes.Any(Listed))
                     rows.Add(new("DNSBL", zone, CheckLevel.Warning, "LISTED: " + string.Join(", ", codes.Select(x => x.ToString())), detail));
                 else rows.Add(new("DNSBL", zone, CheckLevel.Ok, "NOT LISTED на момент запроса", detail));

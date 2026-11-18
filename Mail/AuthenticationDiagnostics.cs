@@ -143,7 +143,7 @@ namespace mailTester.Mail
         internal static CheckFinding DmarcFinding(DmarcDiscovery d)
         {
             string detail = $"Авторский домен: {d.Domain}\nОрганизационный домен: {d.Organization}\nИсточник: {d.Source ?? "(нет)"}\nЭффективная политика: {d.Policy ?? "(нет)"}\n\nDNS Tree Walk (RFC 9989):\n{d.Trace}";
-            if (d.Unknown) return new("DMARC", d.Domain, CheckLevel.Warning, "Неполный DNS Tree Walk", detail);
+            if (d.Unknown) return new("DMARC", d.Domain, CheckLevel.Unknown, "Неполный DNS Tree Walk", detail);
             if (d.Policy == null) return new("DMARC", d.Domain, CheckLevel.Warning, "Применимая политика не обнаружена", detail);
             bool test = d.Tags.TryGetValue("t", out string flag) && flag == "y";
             if (test) detail += "\n\nRFC 9989 t=y: ожидаемая политика для FAIL на один уровень мягче: " + ExpectedTestPolicy(d.Policy);

@@ -13,7 +13,8 @@ namespace mailTester.Mail
 
     public sealed partial class DnsDiagnosticEngine
     {
-        private readonly LookupClient client;
+        private readonly LookupClient client, tcpClient;
+        private readonly SemaphoreSlim querySlots = new SemaphoreSlim(4, 4);
         private readonly string resolver;
         private readonly IPAddress serverAddress;
 
@@ -27,19 +28,42 @@ namespace mailTester.Mail
             options.ThrowDnsErrors = false;
             options.UseTcpFallback = true;
             client = new LookupClient(options);
+            var tcpOptions = server == null ? new LookupClientOptions() : new LookupClientOptions(server);
+            tcpOptions.UseCache = false;
+            tcpOptions.Timeout = TimeSpan.FromSeconds(3);
+            tcpOptions.Retries = 0;
+            tcpOptions.ThrowDnsErrors = false;
+            tcpOptions.UseTcpOnly = true;
+            tcpClient = new LookupClient(tcpOptions);
             resolver = server?.ToString() ?? "Системный DNS";
         }
 
-        private record Answer(string Name, QueryType Type, int Code, IReadOnlyList<DnsResourceRecord> Records, string Error)
+        private record Answer(string Name, QueryType Type, int Code, IReadOnlyList<DnsResourceRecord> Records, string Error, string Note = null)
         {
             public bool Failed => Error != null || (Code != 0 && Code != 3);
             public bool Missing => Code == 3 || Records.Count == 0;
-            public string Text => Error ?? (Code == 3 ? "NXDOMAIN" : Code != 0 ? "DNS RCODE " + Code : Records.Count == 0 ? "NOERROR / NODATA" : string.Join("\n", Records.Select(x => x.ToString())));
+            public string Text => (Error ?? (Code == 3 ? "NXDOMAIN" : Code != 0 ? "DNS RCODE " + Code + " (" + (DnsResponseCode)Code + ")" : Records.Count == 0 ? "NOERROR / NODATA" : string.Join("\n", Records.Select(x => x.ToString())))) +
+                (string.IsNullOrEmpty(Note) ? "" : "\n" + Note);
             public string[] Txt => Records.OfType<TxtRecord>().Select(x => string.Concat(x.Text)).ToArray();
+        }
+
+        public static string DescribeDnsCode(int code) => code switch {
+            0 => "NOERROR", 1 => "FORMERR", 2 => "SERVFAIL", 3 => "NXDOMAIN",
+            4 => "NOTIMP", 5 => "REFUSED", 999 => "TIMEOUT", _ => "DNS code " + code
+        };
+
+        private static string DescribeDnsException(Exception ex)
+        {
+            string code = ex is DnsResponseException dns ? DescribeDnsCode((int)dns.Code) + " / " : "";
+            string message = (ex.Message ?? "").Replace("\r", " ").Replace("\n", " ");
+            if (message.Length > 500) message = message[..500];
+            return code + ex.GetType().Name + ": " + message;
         }
 
         private async Task<Answer> Query(string name, QueryType type, CancellationToken ct)
         {
+            await querySlots.WaitAsync(ct).ConfigureAwait(false);
+            string note = "DNS: " + resolver;
             try
             {
                 string current = name.TrimEnd('.') + ".";
@@ -49,32 +73,40 @@ namespace mailTester.Mail
                 {
                     ct.ThrowIfCancellationRequested();
                     if (!visited.Add(current)) return new(name, type, -1, aliases, "Цикл CNAME");
-                    var response = await client.QueryAsync(current, type, cancellationToken: ct).ConfigureAwait(false);
+                    IDnsQueryResponse response;
+                    try { response = await client.QueryAsync(current, type, cancellationToken: ct).ConfigureAwait(false); }
+                    catch (DnsResponseException ex) when ((int)ex.Code != 3 && !ct.IsCancellationRequested)
+                    {
+                        note += "\nUDP/обычный запрос не завершён: " + DescribeDnsException(ex) + "\nПовтор TCP/53 на том же резолвере.";
+                        response = await tcpClient.QueryAsync(current, type, cancellationToken: ct).ConfigureAwait(false);
+                    }
                     int code = (int)response.Header.ResponseCode;
                     var records = response.Answers.ToArray();
-                    if (code != 0) return new(name, type, code, aliases.Concat(records).ToArray(), null);
+                    if (code != 0) return new(name, type, code, aliases.Concat(records).ToArray(), null, note);
                     var matching = records.Where(x => (int)x.RecordType == (int)type).ToArray();
-                    if (matching.Length > 0) return new(name, type, code, aliases.Concat(records).ToArray(), null);
+                    if (matching.Length > 0) return new(name, type, code, aliases.Concat(records).ToArray(), null, note);
                     var cname = records.OfType<CNameRecord>().LastOrDefault();
-                    if (cname == null || type == QueryType.CNAME) return new(name, type, code, aliases.Concat(records).ToArray(), null);
+                    if (cname == null || type == QueryType.CNAME) return new(name, type, code, aliases.Concat(records).ToArray(), null, note);
                     aliases.AddRange(records);
                     current = cname.CanonicalName.Value.TrimEnd('.') + ".";
                 }
                 return new(name, type, -1, aliases, "Слишком длинная цепочка CNAME");
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-            catch (Exception ex) { return new(name, type, -1, Array.Empty<DnsResourceRecord>(), ex.GetType().Name); }
+            catch (DnsResponseException ex) when ((int)ex.Code == 3) { return new(name, type, 3, Array.Empty<DnsResourceRecord>(), null, note); }
+            catch (Exception ex) { return new(name, type, ex is DnsResponseException dns ? (int)dns.Code : -1, Array.Empty<DnsResourceRecord>(), DescribeDnsException(ex), note); }
+            finally { querySlots.Release(); }
         }
 
         private static CheckFinding Raw(string section, Answer answer)
         {
             int count = answer.Records.Count(x => (int)x.RecordType == (int)answer.Type);
-            return new(section, answer.Name + " " + answer.Type, answer.Failed ? CheckLevel.Error : answer.Code == 3 || count == 0 ? CheckLevel.Info : CheckLevel.Ok,
-                answer.Failed ? "Ошибка DNS" : answer.Code == 3 ? "NXDOMAIN" : count == 0 ? "Нет записи (NODATA)" : $"Записей: {count}", answer.Text);
+            return new(section, answer.Name + " " + answer.Type, answer.Failed ? CheckLevel.Unknown : answer.Code == 3 || count == 0 ? CheckLevel.Info : CheckLevel.Ok,
+                answer.Failed ? "DNS не проверен: " + DescribeDnsCode(answer.Code) : answer.Code == 3 ? "NXDOMAIN" : count == 0 ? "Нет записи (NODATA)" : $"Записей: {count}", answer.Text);
         }
 
         private static CheckFinding FailedPolicy(string section, Answer answer) =>
-            new(section, answer.Name, CheckLevel.Error, "Политику не удалось проверить: ошибка DNS", answer.Text);
+            new(section, answer.Name, CheckLevel.Unknown, "Политику не удалось проверить: " + DescribeDnsCode(answer.Code), answer.Text);
 
         public async Task<DnsDiagnosticReport> InspectAsync(string domain, string[] selectors, IProgress<string> progress, CancellationToken ct)
         {
@@ -116,8 +148,8 @@ namespace mailTester.Mail
                         bool found = ip.Any(x => !x.Failed && x.Code == 0 && x.Records.Any(r => (int)r.RecordType == (int)x.Type));
                         bool alias = ip.Any(x => x.Records.OfType<CNameRecord>().Any());
                         bool failed = ip.Any(x => x.Failed);
-                        rows.Add(new("MX", host, alias || failed ? CheckLevel.Warning : found ? CheckLevel.Ok : CheckLevel.Error,
-                            alias ? "MX указывает на CNAME (не рекомендуется/недопустимо для MX)" : failed ? "Часть DNS-запросов не завершилась" : found ? "MX разрешается в IP" : "Нет A/AAAA у MX",
+                        rows.Add(new("MX", host, alias ? CheckLevel.Warning : failed ? (found ? CheckLevel.Warning : CheckLevel.Unknown) : found ? CheckLevel.Ok : CheckLevel.Error,
+                            alias ? "MX указывает на CNAME (не рекомендуется/недопустимо для MX)" : failed ? (found ? "MX разрешается частично; один запрос не завершён" : "Адрес MX не установлен: ошибка резолвера") : found ? "MX разрешается в IP" : "Нет A/AAAA у MX",
                             string.Join("\n\n", ip.Select(x => x.Type + ":\n" + x.Text))));
                     }
                     if (distinctHosts.Length > 10) rows.Add(new("MX", domain, CheckLevel.Skipped, "Лимит проверки 10 MX-хостов", "Остальные хосты не проверялись."));
