@@ -21,6 +21,8 @@ namespace mailTester
         private List<ReceivedMessage> messages = new List<ReceivedMessage>();
         private CancellationTokenSource operation;
         private Button activeButton;
+        private int sentCount, receivedCount, errorCount;
+        private bool closeRequested;
 
         public MailTestForm()
         {
@@ -30,6 +32,7 @@ namespace mailTester
                 if (operation != null)
                 {
                     e.Cancel = true;
+                    closeRequested = true;
                     operation.Cancel();
                 }
             };
@@ -37,54 +40,40 @@ namespace mailTester
                 foreach (var message in messages) message.Dispose();
                 tbPassword.Clear();
                 tbPop3Pass.Clear();
+                openAttachmentDialog.Dispose();
+                selectAttachmentFolder.Dispose();
             };
         }
 
         private void ConfigureControls()
         {
-            pageSend.Controls.Remove(cbSSL);
-            cbSSL.Dispose();
-            pageGet.Controls.Remove(cbPop3SSL);
-            cbPop3SSL.Dispose();
-            SetupSecurity(smtpSecurity, pageSend, new Point(389, 5), 0);
-            SetupSecurity(receiveSecurity, pageGet, new Point(389, 5), 1);
-
+            SetupSecurity(smtpSecurity, 0);
+            SetupSecurity(receiveSecurity, 1);
             receiveProtocol.DropDownStyle = ComboBoxStyle.DropDownList;
+            receiveProtocol.Dock = DockStyle.Fill;
+            receiveProtocol.Margin = new Padding(0, 3, 8, 4);
             receiveProtocol.Items.AddRange(new object[] { "POP3", "IMAP" });
-            receiveProtocol.Location = new Point(6, 57);
-            receiveProtocol.Size = new Size(90, 23);
             receiveProtocol.SelectedIndex = 0;
-            pageGet.Controls.Add(receiveProtocol);
-            var limitLabel = new Label { Text = "Последних писем:", AutoSize = true, Location = new Point(105, 61) };
-            pageGet.Controls.Add(limitLabel);
-            messageLimit.Location = new Point(230, 57);
-            messageLimit.Size = new Size(65, 23);
+            messageLimit.Dock = DockStyle.Fill;
+            messageLimit.Margin = new Padding(0, 3, 8, 4);
             messageLimit.Minimum = 1;
             messageLimit.Maximum = 200;
             messageLimit.Value = 25;
-            pageGet.Controls.Add(messageLimit);
-            splitContainer1.Top += 28;
-            splitContainer1.Height -= 28;
-            rtbPop3Message.ReadOnly = true;
-            rtbPop3Message.DetectUrls = false;
-            dgvMessages.MultiSelect = false;
-            dgvMessages.AllowUserToAddRows = false;
-            bSaveAttachment.Visible = false;
-            openAttachmentDialog.Multiselect = true;
-            MinimumSize = new Size(550, 400);
             smtpSecurity.SelectedIndexChanged += (_, _) => tbPort.Text = smtpSecurity.SelectedIndex switch { 0 => "587", 1 => "465", _ => "25" };
             receiveSecurity.SelectedIndexChanged += (_, _) => UpdateReceivePort();
             receiveProtocol.SelectedIndexChanged += (_, _) => UpdateReceivePort();
+            UpdateReceivePort();
+            ClearAttachments();
+            Log(journalBox, "MailTester 1.3.0 запущен");
         }
 
-        private static void SetupSecurity(ComboBox box, TabPage page, Point location, int selected)
+        private static void SetupSecurity(ComboBox box, int selected)
         {
             box.DropDownStyle = ComboBoxStyle.DropDownList;
+            box.Dock = DockStyle.Fill;
+            box.Margin = new Padding(0, 3, 8, 4);
             box.Items.AddRange(new object[] { "STARTTLS", "SSL/TLS", "Без TLS" });
-            box.Location = location;
-            box.Size = new Size(125, 23);
             box.SelectedIndex = selected;
-            page.Controls.Add(box);
         }
 
         private void UpdateReceivePort()
@@ -108,11 +97,75 @@ namespace mailTester
                 MessageBoxDefaultButton.Button2) == DialogResult.Yes;
         }
 
-        private static void Log(RichTextBox target, string message)
+        private void Log(RichTextBox target, string message)
         {
-            target.AppendText($"{DateTime.Now:HH:mm:ss} | {message}\n");
+            string prefix = target == rtbStatus ? "SMTP" : target == rtbPop3Status ? "RECV" : "APP";
+            string line = $"{DateTime.Now:HH:mm:ss} | {prefix,-4} | {message}\n";
+            AppendLog(target, line);
+            if (target != journalBox) AppendLog(journalBox, line);
+        }
+
+        private static void AppendLog(RichTextBox target, string line)
+        {
+            const int maxChars = 200000;
+            if (target.TextLength + line.Length > maxChars)
+            {
+                target.Select(0, Math.Min(target.TextLength, 20000));
+                target.SelectedText = "";
+            }
+            target.AppendText(line);
             target.SelectionStart = target.TextLength;
             target.ScrollToCaret();
+        }
+
+        private void CopyJournal()
+        {
+            if (journalBox.TextLength == 0) return;
+            try { Clipboard.SetText(journalBox.Text); }
+            catch (System.Runtime.InteropServices.ExternalException) { MessageBox.Show(this, "Буфер обмена занят."); }
+        }
+
+        private void ExportJournal()
+        {
+            using var dialog = new SaveFileDialog { Filter = "Текстовый журнал (*.txt)|*.txt", FileName = $"mailtester-{DateTime.Now:yyyyMMdd-HHmmss}.txt", AddExtension = true, OverwritePrompt = true };
+            if (dialog.ShowDialog(this) != DialogResult.OK) return;
+            try { File.WriteAllText(dialog.FileName, journalBox.Text, System.Text.Encoding.UTF8); }
+            catch (Exception ex) { MessageBox.Show(this, "Не удалось сохранить журнал: " + ex.GetType().Name); }
+        }
+
+        private void ClearAttachments()
+        {
+            if (operation != null) return;
+            attachments = Array.Empty<string>();
+            UpdateAttachments();
+        }
+
+        private void UpdateAttachments()
+        {
+            tbAttachment.Text = string.Join("; ", attachments.Select(Path.GetFileName));
+            attachmentInfo.Text = $"Вложения: {attachments.Length}";
+            bClearAttachments.Enabled = operation == null && attachments.Length > 0;
+        }
+
+        private ReceivedMessage SelectedMessage() =>
+            dgvMessages.SelectedRows.Count > 0 ? dgvMessages.SelectedRows[0].DataBoundItem as ReceivedMessage : null;
+
+        private void ApplyFilter()
+        {
+            string term = searchMessages.Text.Trim();
+            var filtered = messages.Where(m => term.Length == 0 ||
+                m.Subject.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                m.From.Contains(term, StringComparison.OrdinalIgnoreCase)).ToList();
+            dgvMessages.DataSource = filtered;
+            inboxCount.Text = $"02  /  Письма · {filtered.Count} из {messages.Count}";
+            dgvMessages_SelectionChanged(dgvMessages, EventArgs.Empty);
+        }
+
+        private void UpdateMetrics()
+        {
+            metricSent.Text = sentCount.ToString();
+            metricReceived.Text = receivedCount.ToString();
+            metricErrors.Text = errorCount.ToString();
         }
 
         private static MailConnection Connection(TextBox host, TextBox port, ComboBox security, TextBox login, TextBox password, bool requireAuth)
@@ -127,8 +180,8 @@ namespace mailTester
         {
             if (operation != null) return;
             if (openAttachmentDialog.ShowDialog() != DialogResult.OK) return;
-            attachments = openAttachmentDialog.FileNames;
-            tbAttachment.Text = string.Join("; ", attachments.Select(Path.GetFileName));
+            attachments = attachments.Concat(openAttachmentDialog.FileNames).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            UpdateAttachments();
         }
 
         private async Task RunOperation(Button button, RichTextBox status, Func<CancellationToken, IProgress<string>, Task> action)
@@ -142,23 +195,55 @@ namespace mailTester
             operation = cts;
             activeButton = button;
             string originalText = button.Text;
-            var otherButtons = new[] { bSend, bGetMail, bSaveAttachment, bAttachment }.Where(b => b != button).ToArray();
+            string operationName = button == bSend ? "SMTP" : button == bGetMail ? "Получение" : "Вложения";
+            var otherButtons = new[] { bSend, bGetMail, bSaveAttachment, bAttachment, bClearAttachments }.Where(b => b != button).ToArray();
             foreach (var b in otherButtons) b.Enabled = false;
             button.Text = "Отмена";
+            statusLabel.Text = "●  Выполняется";
+            statusLabel.ForeColor = Accent;
+            Label localState = status == rtbStatus ? sendState : receiveState;
+            string originalState = localState.Text;
+            localState.Text = "Выполняется: " + operationName;
+            string outcome = "Готово";
+            Color color = Green;
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            Log(status, $"Начало операции: {operationName}");
             try
             {
                 var progress = new Progress<string>(line => { if (!IsDisposed) Log(status, line); });
                 await action(cts.Token, progress);
             }
-            catch (OperationCanceledException) { Log(status, "Операция отменена или истёк таймаут. Для SMTP при отмене во время передачи статус принятия может быть неизвестен."); }
-            catch (MailDiagnosticException ex) { Log(status, ex.Message); }
-            catch (Exception ex) { Log(status, "Ошибка: " + ex.GetType().Name); }
+            catch (OperationCanceledException)
+            {
+                outcome = "Отменено"; color = Muted;
+                Log(status, "Операция отменена или истёк таймаут." + (button == bSend ? " При отмене передачи SMTP статус принятия может быть неизвестен." : ""));
+            }
+            catch (MailDiagnosticException ex)
+            {
+                outcome = "Ошибка"; color = Red; errorCount++;
+                Log(status, ex.Message);
+            }
+            catch (Exception ex)
+            {
+                outcome = "Ошибка"; color = Red; errorCount++;
+                Log(status, "Ошибка: " + ex.GetType().Name);
+            }
             finally
             {
+                watch.Stop();
                 operation = null;
                 activeButton = null;
                 button.Text = originalText;
                 foreach (var b in otherButtons) b.Enabled = true;
+                bClearAttachments.Enabled = attachments.Length > 0;
+                bSaveAttachment.Enabled = SelectedMessage()?.HasAttachment == true;
+                statusLabel.Text = "●  " + outcome;
+                statusLabel.ForeColor = color;
+                localState.Text = originalState;
+                metricLast.Text = $"Последняя операция: {operationName} · {outcome} · {watch.Elapsed.TotalSeconds:F1} с";
+                UpdateMetrics();
+                Log(status, $"{outcome}. Время: {watch.Elapsed.TotalSeconds:F1} с");
+                if (closeRequested) BeginInvoke(new Action(Close));
             }
         }
 
@@ -173,8 +258,10 @@ namespace mailTester
             string[] files = attachments.ToArray();
             if (string.IsNullOrWhiteSpace(from) || string.IsNullOrWhiteSpace(to))
             { Log(rtbStatus, "Укажите отправителя и получателя."); return; }
-            await RunOperation(bSend, rtbStatus, (ct, progress) =>
-                Task.Run(() => MailEngine.SendAsync(connection, from, to, subject, body, files, progress, ct), ct));
+            await RunOperation(bSend, rtbStatus, async (ct, progress) => {
+                await Task.Run(() => MailEngine.SendAsync(connection, from, to, subject, body, files, progress, ct), ct);
+                sentCount++;
+            });
         }
 
         private async void bGetMail_Click(object sender, EventArgs e)
@@ -190,7 +277,8 @@ namespace mailTester
                 var result = await Task.Run(() => MailEngine.ReceiveAsync(connection, protocol, limit, progress, ct), ct);
                 var previous = messages;
                 messages = result;
-                dgvMessages.DataSource = messages;
+                receivedCount += messages.Count;
+                ApplyFilter();
                 foreach (var message in previous) message.Dispose();
                 Log(rtbPop3Status, $"Готово. Получено: {messages.Count}.");
             });
@@ -198,17 +286,14 @@ namespace mailTester
 
         private void dgvMessages_SelectionChanged(object sender, EventArgs e)
         {
-            var selected = dgvMessages.SelectedRows.Count > 0 ? dgvMessages.SelectedRows[0].DataBoundItem as ReceivedMessage : null;
+            // During control construction the preview does not exist yet.
+            if (previewSubject == null || previewMeta == null || rtbPop3Message == null || previewFiles == null || bSaveAttachment == null) return;
+            var selected = SelectedMessage();
+            previewSubject.Text = selected == null ? "Выберите письмо" : string.IsNullOrWhiteSpace(selected.Subject) ? "(Без темы)" : selected.Subject;
+            previewMeta.Text = selected == null ? "Здесь будут данные сообщения" : $"От: {selected.From}\r\nДата: {selected.Date:dd.MM.yyyy HH:mm}";
             rtbPop3Message.Text = selected?.Body ?? "";
-            bSaveAttachment.Visible = selected?.HasAttachment == true;
-        }
-
-        private void MailTestForm_Load(object sender, EventArgs e)
-        {
-            dgvMessages.AutoGenerateColumns = false;
-            dgvMessages.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = "From", HeaderText = "Отправитель", Name = "From" });
-            dgvMessages.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = "Subject", HeaderText = "Тема", Name = "Subject" });
-            dgvMessages.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = "Date", HeaderText = "Дата", Name = "Date" });
+            previewFiles.Text = selected == null ? "Вложения: —" : $"Вложения: {selected.Message.Attachments.Count()}";
+            bSaveAttachment.Enabled = activeButton == bSaveAttachment || (operation == null && selected?.HasAttachment == true);
         }
 
         private async void bSaveAttachment_Click(object sender, EventArgs e)
