@@ -124,7 +124,7 @@ dotnet publish mailTester.csproj -c Release -r win-x64 --self-contained true -o 
 | Сертификат, RDAP/WHOIS | 1440 мин |
 | Round Trip | 15 мин (минимум 15 мин) |
 
-SQLite: `%LOCALAPPDATA%\\MailTester\\monitor.db`; WAL, история 90 дней (удаление старых записей при завершении проверки), последние 100 в GUI, CSV-экспорт и график (до 50 последних проверок). Состояния OK, Warning, Error, Unknown; дата и экранные значения могут отличаться по часовому поясу, отчёт истории UTC. Это история наблюдений, не точная непрерывная доступность. GUI проверяет очередь каждые 15 с, выполняет по одной задаче, откладывает запуск при активной ручной операции. SQLite выдаёт атомарную аренду профиля на 10 минут, обычный бюджет проверки 4 минуты; аварийное завершение может оставить аренду до её истечения. Несколько процессов могут проверять разные профили; одна и та же задача не выполняется одновременно в нормальных условиях. Профиль не активируется автоматически после перезапуска GUI. Регулярному запуску CLI требуется отдельный Планировщик заданий Windows.
+SQLite: `%LOCALAPPDATA%\MailTester\monitor.db`; WAL, история 90 дней (удаление старых записей при завершении проверки), последние 100 в GUI, CSV-экспорт и график длительности и цветовая лента состояний (до 50 последних проверок), доля OK среди определённых результатов. Состояния OK, Warning, Error, Unknown; дата и экранные значения могут отличаться по часовому поясу, отчёт истории UTC. Это история наблюдений, не точная непрерывная доступность. GUI проверяет очередь каждые 15 с, выполняет по одной задаче, откладывает запуск при активной ручной операции. SQLite выдаёт атомарную аренду профиля на 10 минут, обычный бюджет проверки 4 минуты; аварийное завершение может оставить аренду до её истечения. Несколько процессов могут проверять разные профили; одна и та же задача не выполняется одновременно в нормальных условиях. Профиль не активируется автоматически после перезапуска GUI. Регулярному запуску CLI требуется отдельный Планировщик заданий Windows.
 
 Пароли сохраняются как DPAPI CurrentUser ciphertext; остальная конфигурация (в т.ч. логин, адрес, имя, URL без query) и диагностические данные хранятся локально в SQLite без шифрования. Профиль не переносит пароли автоматически на другую учётную запись/ПК. Не передавайте БД третьим лицам. Никакого Telegram, облачного журнала или телеметрии. DNSBL/RDAP/WHOIS неизбежно обращаются к выбранным внешним источникам. Пароли не выдаются в CLI и CSV.
 
@@ -137,7 +137,7 @@ SQLite: `%LOCALAPPDATA%\\MailTester\\monitor.db`; WAL, история 90 дне�
 После публикации в PowerShell:
 
 ```powershell
-$cli = ".\\artifacts\\cli-win-x64\\MailTester.Cli.exe"
+$cli = ".\artifacts\cli-win-x64\MailTester.Cli.exe"
 & $cli dns example.com --json
 & $cli dns-records example.com
 & $cli spf example.com --ip 192.0.2.10 --from test@example.com
@@ -147,17 +147,18 @@ $cli = ".\\artifacts\\cli-win-x64\\MailTester.Cli.exe"
 & $cli tls example.com --port 443
 & $cli audit example.com --json
 & $cli monitor list
+$id = 'INSERT_PROFILE_ID_HERE'
 & $cli monitor run-due --max 20 --json
-& $cli monitor history <PROFILE_ID> --format csv
-& $cli monitor status <PROFILE_ID> --format zabbix
-& $cli monitor latency <PROFILE_ID> --format zabbix
-& $cli roundtrip <PROFILE_ID> --json
+& $cli monitor history $id --format csv
+& $cli monitor status $id --format zabbix
+& $cli monitor latency $id --format zabbix
+& $cli roundtrip $id --json
 ```
 
-Замените placeholder PROFILE_ID на ID из monitor list (кавычки и реальные символы вместо угловых скобок). Форматы text/json/csv/zabbix; обычные exit codes 0 OK, 1 Warning, 2 Error, 3 Unknown/ошибка CLI/отмена. Zabbix format печатает числовой статус и возвращает exit 0 для результата (3 при ошибке самого CLI). Для latency успешный последний результат: секунды, иначе -1; срок свежести = два интервала. Не храните пароли в UserParameter. CLI list не содержит защищённых blob. Не запускать roundtrip из Zabbix каждую минуту: планировщик заполняет историю, Zabbix читает status/latency. Для фоновой проверки при закрытом GUI установите задачу отдельно (под тем же Windows-пользователем, вошедшим в систему):
+Замените INSERT_PROFILE_ID_HERE на ID из monitor list. Форматы text/json/csv/zabbix; обычные exit codes 0 OK, 1 Warning, 2 Error, 3 Unknown/ошибка CLI/отмена. Zabbix format печатает числовой статус и возвращает exit 0 для результата (3 при ошибке самого CLI). Для latency успешный последний результат: секунды, иначе -1; срок свежести = два интервала. Не храните пароли в UserParameter. CLI list не содержит защищённых blob. Не запускать roundtrip из Zabbix каждую минуту: планировщик заполняет историю, Zabbix читает status/latency. Для фоновой проверки при закрытом GUI установите задачу отдельно (под тем же Windows-пользователем, вошедшим в систему):
 
 ```powershell
-.\\scripts\\install-monitor-task.ps1 -CliPath ".\\artifacts\\cli-win-x64\\MailTester.Cli.exe"
+.\scripts\install-monitor-task.ps1 -CliPath ".\artifacts\cli-win-x64\MailTester.Cli.exe"
 # Удаление задачи:
 Unregister-ScheduledTask -TaskName "MailTester Monitor" -Confirm:$false
 ```

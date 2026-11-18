@@ -164,7 +164,9 @@ public partial class MailTestForm
             chartRuns=entry==null?Array.Empty<MonitorRun>():monitorStore.History(entry.Job.Id,100);
             historyGrid.DataSource=chartRuns.ToList();
             if(chartRuns.Count==0)monitorDetail.Clear();
-            historySummary.Text=chartRuns.Count==0?"История: нет проверок":$"Последние {chartRuns.Count}: OK {chartRuns.Count(x=>x.Status==MonitorStatus.Ok)}, WARN {chartRuns.Count(x=>x.Status==MonitorStatus.Warning)}, ERROR {chartRuns.Count(x=>x.Status==MonitorStatus.Error)}, UNKNOWN {chartRuns.Count(x=>x.Status==MonitorStatus.Unknown)}";
+            int good=chartRuns.Count(x=>x.Status==MonitorStatus.Ok), completed=chartRuns.Count(x=>x.Status!=MonitorStatus.Unknown);
+            string share=completed==0?"—":(100.0*good/completed).ToString("F1")+"%";
+            historySummary.Text=chartRuns.Count==0?"История: нет проверок":$"OK {good}/{completed} ({share}) · WARN {chartRuns.Count(x=>x.Status==MonitorStatus.Warning)} · ERR {chartRuns.Count(x=>x.Status==MonitorStatus.Error)} · UNKNOWN {chartRuns.Count-completed}";
             monitorChart.Invalidate();
         } catch(Exception ex){Log(monitorLog,"История: "+ex.GetType().Name);}
         UpdateMonitorButtons();
@@ -179,11 +181,18 @@ public partial class MailTestForm
         var usable=samples.Where(r=>Value(r).HasValue).ToArray();
         using var pen=new Pen(Accent,2);using var faint=new Pen(BorderColor,1);
         using var brush=new SolidBrush(Muted);using var red=new SolidBrush(Red);using var green=new SolidBrush(Green);
+        using var warning=new SolidBrush(Color.FromArgb(217,119,6));using var unknown=new SolidBrush(Color.FromArgb(148,163,184));
+        Brush StateBrush(MonitorStatus state)=>state switch{MonitorStatus.Ok=>green,MonitorStatus.Warning=>warning,MonitorStatus.Error=>red,_=>unknown};
         var rect=monitorChart.ClientRectangle;
-        if(rect.Width<100||rect.Height<40)return;
+        if(rect.Width<100||rect.Height<65)return;
         g.DrawString(roundTrip?"Время до обнаружения письма, с":"Длительность проверок, с",Font,brush,8,3);
-        if(usable.Length==0){g.DrawString("Нет данных для графика",Font,brush,8,36);return;}
-        float left=42,right=rect.Width-10,top=28,bottom=rect.Height-9;
+        float left=42,right=rect.Width-10,top=28,bottom=rect.Height-22;
+        if(samples.Length>0){
+            float cell=(right-left)/samples.Length;
+            for(int i=0;i<samples.Length;i++)
+                g.FillRectangle(StateBrush(samples[i].Status),left+i*cell,rect.Height-14,Math.Max(1,cell-1),9);
+        }
+        if(usable.Length==0){g.DrawString("Нет данных о длительности",Font,brush,8,36);return;}
         double max=Math.Max(0.1,usable.Max(r=>Value(r).Value));
         g.DrawLine(faint,left,top,left,bottom);g.DrawLine(faint,left,bottom,right,bottom);
         g.DrawString(max.ToString("F1"),Font,brush,3,top);
@@ -191,10 +200,10 @@ public partial class MailTestForm
         for(int i=0;i<samples.Length;i++){
             float x=left+(right-left)*(samples.Length==1?0.5f:(float)i/(samples.Length-1));
             var val=Value(samples[i]);
-            if(val==null){previous=null;g.FillEllipse(red,x-3,bottom-6,6,6);continue;}
+            if(val==null){previous=null;g.FillEllipse(StateBrush(samples[i].Status),x-3,bottom-6,6,6);continue;}
             var point=new PointF(x,bottom-(bottom-top)*(float)(val.Value/max));
             if(previous.HasValue)g.DrawLine(pen,previous.Value,point);
-            g.FillEllipse(samples[i].Status==MonitorStatus.Ok?green:red,point.X-3,point.Y-3,6,6);
+            g.FillEllipse(StateBrush(samples[i].Status),point.X-3,point.Y-3,6,6);
             previous=point;
         }
     }

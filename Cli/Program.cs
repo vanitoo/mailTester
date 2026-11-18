@@ -89,6 +89,7 @@ MailTester CLI 1.6
     private static int Findings(IReadOnlyList<CheckFinding> items,string format)
     {
         var status = MonitorRunner.StatusOf(items);
+        if(items.Count>0 && items.All(x=>x.Section=="DNSBL" && (x.Level==CheckLevel.Skipped || x.Summary.StartsWith("UNKNOWN",StringComparison.OrdinalIgnoreCase)))) status=MonitorStatus.Unknown;
         if (format=="zabbix") { Console.WriteLine(Code(status)); return 0; }
         if (format=="json") Console.WriteLine(JsonSerializer.Serialize(new { status, findings=items },Json));
         else if (format=="csv")
