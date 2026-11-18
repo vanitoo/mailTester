@@ -492,7 +492,7 @@
             this.ClientSize = new System.Drawing.Size(530, 362);
             this.Controls.Add(this.tabControl1);
             this.Name = "MailTestForm";
-            this.Text = "Тестирование почтового ящика";
+            this.Text = "MailTester 1.2.0";
             this.Load += new System.EventHandler(this.MailTestForm_Load);
             this.tabControl1.ResumeLayout(false);
             this.pageSend.ResumeLayout(false);
