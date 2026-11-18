@@ -12,10 +12,10 @@
     <ImplicitUsings>disable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="MailKit" Version="4.18.2" />
-    <PackageReference Include="DnsClient" Version="1.8.0" />
-    <PackageReference Include="ARSoft.Tools.Net" Version="3.6.1" />
-    <Compile Remove="tests/**/*.cs" />
+    <ProjectReference Include="Core/MailTester.Core.csproj" />
+    <Compile Remove="Mail/**/*.cs;Monitoring/**/*.cs;Core/**/*.cs;Cli/**/*.cs;tests/**/*.cs" />
+    <EmbeddedResource Remove="Core/**/*;Cli/**/*" />
+    <None Remove="Core/**/*;Cli/**/*" />
     <EmbeddedResource Remove="tests/**/*" />
     <None Remove="tests/**/*" />
   </ItemGroup>

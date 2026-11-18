@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>mailTester</RootNamespace>
+    <AssemblyName>MailTester.Core</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Version>1.6.0</Version>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../Mail/**/*.cs" />
+    <Compile Include="../Monitoring/**/*.cs" />
+    <PackageReference Include="MailKit" Version="4.18.2" />
+    <PackageReference Include="DnsClient" Version="1.8.0" />
+    <PackageReference Include="ARSoft.Tools.Net" Version="3.6.1" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
+  </ItemGroup>
+</Project>

@@ -48,7 +48,7 @@ namespace mailTester.Mail
         }
     }
 
-    public static class MailEngine
+    public static partial class MailEngine
     {
         private static void Configure(MailService client)
         {
