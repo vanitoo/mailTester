@@ -199,6 +199,8 @@ namespace mailTester
             var otherButtons = new[] { bSend, bGetMail, bSaveAttachment, bAttachment, bClearAttachments }.Where(b => b != button).ToArray();
             foreach (var b in otherButtons) b.Enabled = false;
             button.Text = "Отмена";
+            bCancelGlobal.Visible = true;
+            bClearJournal.Enabled = false;
             statusLabel.Text = "●  Выполняется";
             statusLabel.ForeColor = Accent;
             Label localState = status == rtbStatus ? sendState : receiveState;
@@ -234,6 +236,8 @@ namespace mailTester
                 operation = null;
                 activeButton = null;
                 button.Text = originalText;
+                bCancelGlobal.Visible = false;
+                bClearJournal.Enabled = true;
                 foreach (var b in otherButtons) b.Enabled = true;
                 bClearAttachments.Enabled = attachments.Length > 0;
                 bSaveAttachment.Enabled = SelectedMessage()?.HasAttachment == true;

@@ -21,7 +21,7 @@ namespace mailTester
         private TextBox tbServer, tbPort, tbLogin, tbPassword, tbSender, tbRecipient, tbSubject, tbAttachment;
         private TextBox tbPop3Server, tbPop3Port, tbPop3Login, tbPop3Pass, searchMessages;
         private RichTextBox rtbMessage, rtbStatus, rtbPop3Status, rtbPop3Message, journalBox;
-        private Button bSend, bGetMail, bSaveAttachment, bAttachment, bClearAttachments, bClearJournal, bCopyJournal, bExportJournal;
+        private Button bSend, bGetMail, bSaveAttachment, bAttachment, bClearAttachments, bClearJournal, bCopyJournal, bExportJournal, bCancelGlobal;
         private CheckBox revealSmtp, revealReceive;
         private DataGridView dgvMessages;
         private Panel workspace, pageOverview, pageSend, pageGet, pageJournal;
@@ -72,10 +72,11 @@ namespace mailTester
             main.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             root.Controls.Add(main, 1, 0);
 
-            var header = Table(2, 2, Surface);
+            var header = Table(3, 2, Surface);
             header.Padding = new Padding(20, 10, 18, 9);
             header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190));
+            header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
+            header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
             header.RowStyles.Add(new RowStyle(SizeType.Percent, 56));
             header.RowStyles.Add(new RowStyle(SizeType.Percent, 44));
             pageTitle = TextLabel("Обзор", 20, Ink, true);
@@ -86,6 +87,12 @@ namespace mailTester
             header.Controls.Add(pageSubtitle, 0, 1);
             header.Controls.Add(statusLabel, 1, 0);
             header.SetRowSpan(statusLabel, 2);
+            bCancelGlobal = MakeButton("Отмена", false);
+            bCancelGlobal.Visible = false;
+            bCancelGlobal.Margin = new Padding(12, 9, 0, 9);
+            bCancelGlobal.Click += (_, _) => operation?.Cancel();
+            header.Controls.Add(bCancelGlobal, 2, 0);
+            header.SetRowSpan(bCancelGlobal, 2);
             main.Controls.Add(header, 0, 0);
 
             workspace = new Panel { Dock = DockStyle.Fill, BackColor = Canvas, Padding = new Padding(18), Margin = Padding.Empty };
@@ -211,6 +218,14 @@ namespace mailTester
             return table;
         }
 
+        private static void AttachScrollablePage(Panel page, TableLayoutPanel layout, int minimumHeight)
+        {
+            page.AutoScroll = true;
+            page.AutoScrollMinSize = new Size(0, minimumHeight);
+            layout.MinimumSize = new Size(0, minimumHeight);
+            page.Controls.Add(layout);
+        }
+
         private static void Row(TableLayoutPanel table, float height) =>
             table.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
 
@@ -254,7 +269,7 @@ namespace mailTester
             Row(layout, 16);
             Row(layout, 170);
             FillRow(layout);
-            pageOverview.Controls.Add(layout);
+            AttachScrollablePage(pageOverview, layout, 480);
 
             var metrics = Table(3, 1, Canvas);
             Col(metrics, 33, true); Col(metrics, 34, true); Col(metrics, 33, true);
@@ -299,7 +314,7 @@ namespace mailTester
         {
             var layout = Table(1, 3, Canvas);
             Col(layout, 100, true); Row(layout, 192); FillRow(layout); Row(layout, 154);
-            pageSend.Controls.Add(layout);
+            AttachScrollablePage(pageSend, layout, 610);
             var connection = Card(3, 5, new Padding(0, 0, 0, 10));
             Col(connection, 54, true); Col(connection, 16, true); Col(connection, 30, true);
             Row(connection, 29); Row(connection, 21); Row(connection, 36); Row(connection, 21); FillRow(connection);
@@ -363,7 +378,7 @@ namespace mailTester
         {
             var layout = Table(1, 3, Canvas);
             Col(layout, 100, true); Row(layout, 192); FillRow(layout); Row(layout, 136);
-            pageGet.Controls.Add(layout);
+            AttachScrollablePage(pageGet, layout, 530);
 
             var connection = Card(4, 5, new Padding(0, 0, 0, 10));
             Col(connection, 36, true); Col(connection, 16, true); Col(connection, 24, true); Col(connection, 24, true);
