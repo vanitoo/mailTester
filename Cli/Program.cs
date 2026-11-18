@@ -62,6 +62,7 @@ MailTester CLI 1.6
   monitor run <profile-id> [--db PATH]
   monitor run-due [--max N] [--db PATH]
   monitor status <profile-id> [--db PATH]
+  monitor latency <profile-id> [--db PATH] [--format zabbix]
   roundtrip <profile-id> [--db PATH]
 
   --format text|json|csv|zabbix     (--json is a shortcut)
@@ -80,7 +81,7 @@ MailTester CLI 1.6
         if (!IPAddress.TryParse(text,out var ip)) throw new ArgumentException("Invalid IP");
         return ip;
     }
-    private static string Q(object value) { string s = Convert.ToString(value,CultureInfo.InvariantCulture) ?? ""; return "\"" + s.Replace("\"","\"\"") + "\""; }
+    private static string Q(object value) { string s = Convert.ToString(value,CultureInfo.InvariantCulture) ?? ""; if(value is string && s.Length>0 && "=+-@\t\r\n".Contains(s[0])) s="'"+s; return "\"" + s.Replace("\"","\"\"") + "\""; }
     private static int Code(MonitorStatus status) => status switch { MonitorStatus.Ok=>0, MonitorStatus.Warning=>1, MonitorStatus.Error=>2, _=>3 };
     private static MonitorStatus Worst(IEnumerable<MonitorStatus> statuses) =>
         statuses.DefaultIfEmpty(MonitorStatus.Ok).OrderByDescending(Code).First();
@@ -123,7 +124,7 @@ MailTester CLI 1.6
         if (command=="list") a.Check(2,"db");
         else if (command=="run-due") a.Check(2,"db","max");
         else if (command=="history") a.Check(3,"db","limit");
-        else if (command is "run" or "status") a.Check(3,"db");
+        else if (command is "run" or "status" or "latency") a.Check(3,"db");
         else throw new ArgumentException("Unknown monitor command");
         var db = new MonitorStore(a.Get("db"));
         var runner = new MonitorRunner(db);
@@ -142,8 +143,31 @@ MailTester CLI 1.6
         }
         if (command=="run-due") return Runs(await runner.RunDueAsync(a.Int("max",20,1,100),null,ct),format,true);
         string id=a.Pos(2);
-        if (!db.Entries().Any(x=>x.Job.Id==id)) throw new ArgumentException("Unknown monitor profile");
-        if (command=="history" || command=="status") return Runs(db.History(id,command=="status"?1:a.Int("limit",100,1,10000)),format);
+        var entry=db.Entries().FirstOrDefault(x=>x.Job.Id==id);
+        if (entry==null) throw new ArgumentException("Unknown monitor profile");
+        if (command=="history") return Runs(db.History(id,a.Int("limit",100,1,10000)),format);
+        if (command is "status" or "latency")
+        {
+            var last=entry.Last;
+            bool fresh=last!=null&&last.Started.AddMinutes(2*entry.Job.IntervalMinutes)>=DateTimeOffset.UtcNow;
+            if(command=="latency")
+            {
+                double? value=fresh&&last.Status==MonitorStatus.Ok?(entry.Job.Kind==MonitorKind.RoundTrip?last.DeliverySeconds:last.Seconds):null;
+                if(format=="zabbix"||format=="text")Console.WriteLine(value?.ToString("F3",CultureInfo.InvariantCulture)??"-1");
+                else if(format=="json")Console.WriteLine(JsonSerializer.Serialize(new { seconds=value, fresh },Json));
+                else Console.WriteLine("seconds,fresh\n"+(value?.ToString("F3",CultureInfo.InvariantCulture)??"")+","+fresh);
+                return format=="zabbix"||value.HasValue?0:3;
+            }
+            if(!fresh)
+            {
+                if(format=="zabbix"){Console.WriteLine(3);return 0;}
+                if(format=="json")Console.WriteLine(JsonSerializer.Serialize(new { status=MonitorStatus.Unknown, reason="missing or stale result",last },Json));
+                else if(format=="csv")Console.WriteLine("status,reason\nUnknown,missing or stale result");
+                else Console.WriteLine("UNKNOWN: no fresh result.");
+                return 3;
+            }
+            return Runs(new[]{last},format);
+        }
         var claim=db.Claim(id);
         if (claim==null) throw new InvalidOperationException("Profile busy");
         return Runs(new[]{await runner.RunClaimAsync(claim,null,ct)},format);

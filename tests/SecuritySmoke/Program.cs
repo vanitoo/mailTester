@@ -2,6 +2,7 @@ using System.Text;
 using MailKit.Security;
 using MimeKit;
 using mailTester.Mail;
+using mailTester.Monitoring;
 
 static void Assert(bool ok, string description)
 {
@@ -75,6 +76,23 @@ try
         "from mx1.example.invalid by mx2.example.invalid; Wed, 18 Nov 2026 13:00:00 +0000"
     });
     Assert(route.Count == 2 && route[0].From == "mx1.example.invalid" && route[1].DelaySeconds == 5, "Received hop order and delay");
-    Console.WriteLine("Security and DNS policy smoke tests completed.");
+    message.Headers.Add("X-MailTester-ID","abc123");
+    Assert(MailEngine.IsTripHeader(message.Headers,"abc123") && !MailEngine.IsTripHeader(message.Headers,"abc124"),"roundtrip exact correlation");
+    Assert(MonitorJob.DefaultInterval(MonitorKind.RoundTrip)==15 && MonitorJob.DefaultInterval(MonitorKind.Tls)==1440,"monitor default intervals");
+    string cipher=SecretStore.Protect("temporary-test-only");
+    Assert(!cipher.Contains("temporary-test-only") && SecretStore.Unprotect(cipher)=="temporary-test-only","DPAPI current-user roundtrip");
+    var store=new MonitorStore(Path.Combine(root,"monitor.db"));
+    var job=new MonitorJob{Name="local test",Kind=MonitorKind.Mail,Target="smtp.example.invalid",Port=587,Login="test",PasswordCipher=cipher,Enabled=true};
+    store.Save(job);
+    Assert(!Encoding.UTF8.GetString(File.ReadAllBytes(store.PathName)).Contains("temporary-test-only",StringComparison.Ordinal),"no plain password in SQLite main file");
+    var claim=store.Claim(); Assert(claim!=null&&claim.Job.Id==job.Id,"due profile claimed");
+    var store2=new MonitorStore(store.PathName);
+    Assert(store2.Claim()==null&&store2.Claim(job.Id)==null,"concurrent claim blocked");
+    store.Complete(claim,new MonitorRun(job.Id,job.Name,DateTimeOffset.UtcNow,MonitorStatus.Ok,1.2,null,"test OK",""));
+    Assert(store2.History(job.Id).Count==1&&store2.Claim()==null,"history persisted and rescheduled");
+    job.Enabled=false; store.Save(job);
+    Assert(store.Claim()==null,"disabled job not scheduled");
+    Assert(store.Delete(job.Id)&&store.History(job.Id).Count==0,"profile and history cascade delete");
+    Console.WriteLine("Security, DNS and monitor smoke tests completed.");
 }
 finally { Directory.Delete(root, true); }

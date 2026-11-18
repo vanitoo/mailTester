@@ -119,10 +119,10 @@ public sealed class MonitorRunner
             default:
                 IPAddress resolver = string.IsNullOrWhiteSpace(job.Resolver) ? null : IPAddress.Parse(job.Resolver);
                 var engine = new DnsDiagnosticEngine(resolver);
-                if (job.Kind == MonitorKind.Dnsbl) return await engine.CheckIpAsync(IPAddress.Parse(job.Target),true,progress,ct).ConfigureAwait(false);
+                if (job.Kind == MonitorKind.Dnsbl) return (await engine.CheckIpAsync(IPAddress.Parse(job.Target),true,progress,ct).ConfigureAwait(false)).Where(f=>f.Section=="DNSBL").ToArray();
                 if (job.Kind == MonitorKind.Dns) return await engine.CheckMailDnsAsync(job.Target,ct).ConfigureAwait(false);
                 var report = await engine.InspectAsync(job.Target,DnsPolicyChecks.ParseSelectors(job.Selectors),progress,ct).ConfigureAwait(false);
-                return report.Findings.Where(x => x.Section is "SPF" or "DKIM" or "DMARC").ToArray();
+                return report.Findings.Where(x => x.Section is "SPF" or "DKIM" or "DMARC").Select(x=>x.Level==CheckLevel.Skipped?x with { Level=CheckLevel.Warning }:x).ToArray();
         }
     }
 }

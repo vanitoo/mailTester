@@ -178,7 +178,7 @@ namespace mailTester
                         };
                     }, ct);
                     var sb = new StringBuilder();
-                    sb.AppendLine($"MailTester 1.5 | {toolMode.Text} | {DateTimeOffset.Now:O}");
+                    sb.AppendLine($"MailTester 1.6 | {toolMode.Text} | {DateTimeOffset.Now:O}");
                     sb.AppendLine("Резолвер (для DNS/SPF): " + (resolver?.ToString() ?? "системный"));
                     sb.AppendLine("Результаты относятся к наблюдаемым данным; это не гарантия доставки.\n");
                     foreach (var item in findings)

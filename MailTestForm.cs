@@ -243,6 +243,7 @@ namespace mailTester
                 foreach (var b in otherButtons) b.Enabled = true;
                 bClearAttachments.Enabled = attachments.Length > 0;
                 bSaveAttachment.Enabled = SelectedMessage()?.HasAttachment == true;
+                UpdateMonitorButtons();
                 statusLabel.Text = "●  " + outcome;
                 statusLabel.ForeColor = color;
                 localState.Text = originalState;

@@ -1,4 +1,4 @@
-# MailTester 1.5
+# MailTester 1.6
 
 Windows Forms, .NET 10. SMTP, POP3 и IMAP на MailKit 4.18.2; MIME обрабатывает MimeKit 4.18.2 (зависимость MailKit).
 
@@ -89,3 +89,80 @@ TLS 1.2/1.3, стандартная проверка сертификата и �
 6. При необходимости проверить relay без AUTH на собственном тестовом сервере.
 
 Локальная сборка/сетевой smoke test выполняются на Windows. Полноценный протокольный журнал с редактированием секретов будет отдельным этапом.
+
+## Мониторинг, CLI, Round Trip (1.6)
+
+Общее ядро: `Core/MailTester.Core.csproj`. WinForms и отдельный консольный EXE используют одно ядро; CLI не требует WinForms. Windows .NET 10, SQLite и DPAPI CurrentUser.
+
+### Сборка
+
+```powershell
+dotnet restore mailTester.csproj
+dotnet build mailTester.csproj -c Release
+dotnet build Cli/MailTester.Cli.csproj -c Release
+dotnet run --project mailTester.csproj -c Release
+dotnet run --project Cli/MailTester.Cli.csproj -c Release -- --help
+dotnet run --project tests/SecuritySmoke/SecuritySmoke.csproj -c Release
+```
+
+Публикация отдельного CLI (каталог, вместе с нативной SQLite DLL):
+
+```powershell
+dotnet publish Cli/MailTester.Cli.csproj -c Release -r win-x64 --self-contained true -o artifacts/cli-win-x64
+dotnet publish mailTester.csproj -c Release -r win-x64 --self-contained true -o artifacts/gui-win-x64
+```
+
+### Мониторинг
+
+Добавьте профиль в разделе «Мониторинг»: имя (например, Company A / SMTP), тип, целевой адрес, интервал. Профили по расписанию выключены при создании; поставьте «Активен» и нажмите «Вкл. расписание» для выполнения в открытом GUI. «Запустить» запускает выбранный профиль вручную (в том числе выключенный). Редактирование доступно для незанятых профилей; удаление удаляет историю. После завершения новый срок = текущее время + интервал. Не запускаются все пропущенные проверки задним числом.
+
+| Проверка | Интервал по умолчанию |
+| --- | --- |
+| HTTP GET без редиректов, TCP, Mail (SMTP/POP3/IMAP TLS, AUTH опционально) | 5 мин |
+| DNS/MX | 60 мин |
+| SPF/DKIM/DMARC (записи), DNSBL | 360 мин |
+| Сертификат, RDAP/WHOIS | 1440 мин |
+| Round Trip | 15 мин (минимум 15 мин) |
+
+SQLite: `%LOCALAPPDATA%\\MailTester\\monitor.db`; WAL, история 90 дней (удаление старых записей при завершении проверки), последние 100 в GUI, CSV-экспорт и график (до 50 последних проверок). Состояния OK, Warning, Error, Unknown; дата и экранные значения могут отличаться по часовому поясу, отчёт истории UTC. Это история наблюдений, не точная непрерывная доступность. GUI проверяет очередь каждые 15 с, выполняет по одной задаче, откладывает запуск при активной ручной операции. SQLite выдаёт атомарную аренду профиля на 10 минут, обычный бюджет проверки 4 минуты; аварийное завершение может оставить аренду до её истечения. Несколько процессов могут проверять разные профили; одна и та же задача не выполняется одновременно в нормальных условиях. Профиль не активируется автоматически после перезапуска GUI. Регулярному запуску CLI требуется отдельный Планировщик заданий Windows.
+
+Пароли сохраняются как DPAPI CurrentUser ciphertext; остальная конфигурация (в т.ч. логин, адрес, имя, URL без query) и диагностические данные хранятся локально в SQLite без шифрования. Профиль не переносит пароли автоматически на другую учётную запись/ПК. Не передавайте БД третьим лицам. Никакого Telegram, облачного журнала или телеметрии. DNSBL/RDAP/WHOIS неизбежно обращаются к выбранным внешним источникам. Пароли не выдаются в CLI и CSV.
+
+### Round Trip
+
+Создайте профиль RoundTrip с SMTP, тестовым отправителем и получателем, IMAP/POP3, TLS и паролями приложения. Используйте выделенный тестовый почтовый ящик. Для одной проверки MailTester проверяет доступ к ящику, отправляет одно реальное письмо с новым X-MailTester-ID, ищет его через IMAP SEARCH + заголовки в INBOX или до 100 последних POP3-заголовков. Таймаут ожидания 15–180 с, опрос 5–30 с. Результат: Delivered, NotObserved, SendUnknown, SendFailed, ReceiveFailed; обнаружение включает задержку опроса и не является точным временем серверной доставки. Если почтовый фильтр удалил X-MailTester-ID/перенёс письмо из INBOX или POP3-окно уехало, результат может быть NotObserved даже при доставке. Не удаляет письма и не повторяет отправку при неполучении; настроить очистку выделенного ящика на сервере. При отмене во время отправки статус может быть неизвестен. 15-минутный профиль создаёт до 96 писем/сутки. Не запускайте на чужих ящиках и не используйте для массовой отправки.
+
+### CLI и внешние системы
+
+После публикации в PowerShell:
+
+```powershell
+$cli = ".\\artifacts\\cli-win-x64\\MailTester.Cli.exe"
+& $cli dns example.com --json
+& $cli dns-records example.com
+& $cli spf example.com --ip 192.0.2.10 --from test@example.com
+& $cli dkim example.com --selector mail
+& $cli dmarc example.com
+& $cli whois example.com
+& $cli tls example.com --port 443
+& $cli audit example.com --json
+& $cli monitor list
+& $cli monitor run-due --max 20 --json
+& $cli monitor history <PROFILE_ID> --format csv
+& $cli monitor status <PROFILE_ID> --format zabbix
+& $cli monitor latency <PROFILE_ID> --format zabbix
+& $cli roundtrip <PROFILE_ID> --json
+```
+
+Замените placeholder PROFILE_ID на ID из monitor list (кавычки и реальные символы вместо угловых скобок). Форматы text/json/csv/zabbix; обычные exit codes 0 OK, 1 Warning, 2 Error, 3 Unknown/ошибка CLI/отмена. Zabbix format печатает числовой статус и возвращает exit 0 для результата (3 при ошибке самого CLI). Для latency успешный последний результат: секунды, иначе -1; срок свежести = два интервала. Не храните пароли в UserParameter. CLI list не содержит защищённых blob. Не запускать roundtrip из Zabbix каждую минуту: планировщик заполняет историю, Zabbix читает status/latency. Для фоновой проверки при закрытом GUI установите задачу отдельно (под тем же Windows-пользователем, вошедшим в систему):
+
+```powershell
+.\\scripts\\install-monitor-task.ps1 -CliPath ".\\artifacts\\cli-win-x64\\MailTester.Cli.exe"
+# Удаление задачи:
+Unregister-ScheduledTask -TaskName "MailTester Monitor" -Confirm:$false
+```
+Задача запускается раз в минуту, не запускает новый экземпляр если предыдущий ещё работает, и не требует администраторских прав при разрешении политикой Windows. Интерактивная задача требует активной пользовательской сессии; после выхода из Windows мониторинг не работает. Для режима без входа в систему отдельно настройте задачу с профилем нужной Windows-учётной записи и проверьте DPAPI. Установщик автоматически задачу не регистрирует.
+
+### Локальные тесты
+
+`SecuritySmoke` проверяет DPAPI, сохранение шифрованного профиля и историю в временной SQLite, атомарную аренду, выключенные задачи, корреляцию X-MailTester-ID. Реальные сетевые тесты RoundTrip, SSL, RDAP и работа GUI требуют Windows, контролируемых SMTP/IMAP/POP3 и DNS. Проверьте отсутствие предупреждений у зависимостей: `dotnet list Cli/MailTester.Cli.csproj package --include-transitive --vulnerable`.

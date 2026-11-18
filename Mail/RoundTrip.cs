@@ -59,7 +59,7 @@ namespace mailTester.Mail
                 using var message = new MimeMessage();
                 message.From.Add(MailboxAddress.Parse(from)); message.To.Add(MailboxAddress.Parse(to));
                 message.Subject = subject;
-                message.MessageId = id + "@mailtester.invalid";
+                message.MessageId = MimeKit.Utils.MimeUtils.GenerateMessageId();
                 message.Headers.Add("X-MailTester-ID", id);
                 message.Body = new TextPart("plain") { Text = "MailTester delivery probe. ID: " + id };
                 using var client = new SmtpClient();

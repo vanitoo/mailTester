@@ -14,7 +14,7 @@ public sealed class MonitorStore
     {
         PathName = Path.GetFullPath(path ?? DefaultPath);
         Directory.CreateDirectory(Path.GetDirectoryName(PathName)!);
-        connectionString = new SqliteConnectionStringBuilder { DataSource = PathName, DefaultTimeout = 5 }.ToString();
+        connectionString = new SqliteConnectionStringBuilder { DataSource = PathName, DefaultTimeout = 5, Pooling = false }.ToString();
         using var db = Open();
         using var cmd = db.CreateCommand();
         cmd.CommandText = """
@@ -44,7 +44,7 @@ public sealed class MonitorStore
     }
     private static long Now => DateTimeOffset.UtcNow.ToUnixTimeSeconds();
     private static void Param(SqliteCommand command, string name, object value) => command.Parameters.AddWithValue(name, value ?? DBNull.Value);
-    private static T Decode<T>(string json) => JsonSerializer.Deserialize<T>(json) ?? throw new InvalidDataException("Invalid monitor data");
+    private static T Decode<T>(string json) where T : class => JsonSerializer.Deserialize<T>(json) ?? throw new InvalidDataException("Invalid monitor data");
     private static string Encode<T>(T item) => JsonSerializer.Serialize(item);
 
     public void Save(MonitorJob job)

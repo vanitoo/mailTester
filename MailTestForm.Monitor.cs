@@ -22,7 +22,7 @@ public partial class MailTestForm
     private Panel monitorChart;
     private IReadOnlyList<MonitorRun> chartRuns = Array.Empty<MonitorRun>();
     private List<MonitorEntry> monitorEntries = new();
-    private bool monitorRunning, monitorSchedule, refreshingMonitor;
+    private bool monitorRunning, monitorSchedule, refreshingMonitor, monitorEditing;
     private sealed record MonitorRow(string Id,string Name,string Kind,string Target,string Status,string Next,string Last);
 
     private static DataGridView MonitorGrid()
@@ -104,7 +104,7 @@ public partial class MailTestForm
         bMonitorExport.Click+=(_,_)=>ExportMonitor();
         monitorTimer=new System.Windows.Forms.Timer {Interval=15000};
         monitorTimer.Tick+=async (_,_)=>{
-            if(!monitorSchedule || monitorRunning || operation!=null || monitorStore==null)return;
+            if(!monitorSchedule || monitorRunning || monitorEditing || operation!=null || monitorStore==null)return;
             try {
                 RefreshMonitor();
                 if(monitorEntries.Any(x=>x.Job.Enabled && !x.Busy && x.NextDue<=DateTimeOffset.UtcNow))await RunMonitor(null);
@@ -145,7 +145,7 @@ public partial class MailTestForm
             refreshingMonitor=true;
             monitorEntries=monitorStore.Entries().ToList();
             monitorGrid.DataSource=monitorEntries.Select(x=>new MonitorRow(x.Job.Id,x.Job.Name,x.Job.Kind.ToString(),x.Job.Target,
-                x.Busy?"Running":x.Last?.Status.ToString()??"Never",x.Job.Enabled?x.NextDue.ToLocalTime().ToString("dd.MM HH:mm"):"Откл.",x.Last?.Started.ToLocalTime().ToString("dd.MM HH:mm")??"—")).Select(x=>new MonitorRow(x.Id,x.Name,x.Kind,x.Target,x.Status,x.Last,x.Next)).ToList();
+                x.Busy?"Running":x.Job.Enabled && x.Last!=null && x.Last.Started.AddMinutes(2*x.Job.IntervalMinutes)<DateTimeOffset.UtcNow?"Stale":x.Last?.Status.ToString()??"Never",x.Job.Enabled?x.NextDue.ToLocalTime().ToString("dd.MM HH:mm"):"Откл.",x.Last?.Started.ToLocalTime().ToString("dd.MM HH:mm")??"—")).ToList();
             if(selected!=null)foreach(DataGridViewRow row in monitorGrid.Rows)
                 if(row.DataBoundItem is MonitorRow item&&item.Id==selected){row.Selected=true;monitorGrid.CurrentCell=row.Cells[0];break;}
             int enabled=monitorEntries.Count(x=>x.Job.Enabled);
@@ -202,18 +202,24 @@ public partial class MailTestForm
     private void EditMonitor(MonitorJob job)
     {
         if(monitorStore==null||monitorRunning)return;
-        using var dialog=new MonitorProfileForm(job);
-        if(dialog.ShowDialog(this)!=DialogResult.OK)return;
-        try{monitorStore.Save(dialog.Result);RefreshMonitor();}
-        catch(Exception ex){MessageBox.Show(this,"Не удалось сохранить профиль: "+ex.GetType().Name);}
+        monitorEditing=true;
+        try{
+            using var dialog=new MonitorProfileForm(job);
+            if(dialog.ShowDialog(this)!=DialogResult.OK)return;
+            monitorStore.Save(dialog.Result);RefreshMonitor();
+        }catch(Exception ex){MessageBox.Show(this,"Не удалось сохранить профиль: "+ex.GetType().Name);}
+        finally{monitorEditing=false;}
     }
 
     private void DeleteMonitor()
     {
         var entry=SelectedMonitor();if(entry==null||monitorStore==null||monitorRunning)return;
-        if(MessageBox.Show(this,"Удалить профиль и его историю?","Мониторинг",MessageBoxButtons.YesNo,MessageBoxIcon.Warning,MessageBoxDefaultButton.Button2)!=DialogResult.Yes)return;
-        try{if(!monitorStore.Delete(entry.Job.Id))MessageBox.Show(this,"Профиль занят или удалён.");RefreshMonitor();}
-        catch(Exception ex){Log(monitorLog,"Удаление: "+ex.GetType().Name);}
+        monitorEditing=true;
+        try{
+            if(MessageBox.Show(this,"Удалить профиль и его историю?","Мониторинг",MessageBoxButtons.YesNo,MessageBoxIcon.Warning,MessageBoxDefaultButton.Button2)!=DialogResult.Yes)return;
+            if(!monitorStore.Delete(entry.Job.Id))MessageBox.Show(this,"Профиль занят или удалён.");RefreshMonitor();
+        }catch(Exception ex){Log(monitorLog,"Удаление: "+ex.GetType().Name);}
+        finally{monitorEditing=false;}
     }
 
     private async Task RunMonitor(string id)
@@ -227,6 +233,7 @@ public partial class MailTestForm
             // Refresh before RunOperation: ensure the active button can subsequently cancel.
             RefreshMonitor();
             var runner=new MonitorRunner(monitorStore);
+            bMonitorRun.Enabled=true;
             await RunOperation(bMonitorRun,monitorLog,async (ct,progress)=>{
                 var result=await Task.Run(()=>runner.RunClaimAsync(claim,progress,ct));
                 Log(monitorLog,$"{result.Name}: {result.Status} | {result.Summary}");

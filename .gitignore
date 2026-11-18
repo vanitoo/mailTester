@@ -31,3 +31,9 @@ MailLog.txt
 !.env.example
 publish/
 artifacts/
+
+# Local monitoring database and publish output
+*.db
+*.db-wal
+*.db-shm
+artifacts/

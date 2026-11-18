@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.0 (2026-11-18)
+
+- Shared MailTester.Core, отдельный CLI (text/JSON/CSV/Zabbix).
+- SQLite-профили и 90-дневная история; DPAPI CurrentUser для паролей; атомарная аренда задач между GUI/CLI.
+- HTTP, TCP, SMTP/POP3/IMAP, DNS/MX, политики, TLS, DNSBL, RDAP/WHOIS, расписание и настройка Windows Task Scheduler.
+- Round Trip по IMAP/POP3, уникальный X-MailTester-ID, без автоматического повторного SMTP и удаления сообщений.
+- Экран мониторинга, управление профилями, статусы, история, график, CSV, автономные тесты. Telegram не добавлен.
+
+
 ## 1.5.0 (2026-11-18)
 
 - Рекурсивная SPF-проверка конкретного SMTP-клиента через ARSoft.Tools.Net 3.6.1.
