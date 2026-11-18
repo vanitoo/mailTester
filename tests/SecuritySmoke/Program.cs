@@ -48,6 +48,21 @@ try
     var downgrade = new MailConnection("localhost", 110, SecureSocketOptions.StartTlsWhenAvailable, "user", "test-only");
     try { downgrade.Validate(true); throw new Exception("FAIL: opportunistic TLS accepted"); }
     catch (ArgumentException) { Console.WriteLine("PASS: opportunistic TLS rejected"); }
-    Console.WriteLine("Security smoke tests completed.");
+    Assert(DnsPolicyChecks.NormalizeDomain("ПРИМЕР.РФ.") == "xn--e1afmkfd.xn--p1ai", "IDN normalization");
+    Assert(DnsPolicyChecks.ParseSelectors("selector1, selector2; selector1").Length == 2, "selector parsing");
+    Assert(DnsPolicyChecks.Spf("example.invalid", new[] { "v=spf1 ip4:192.0.2.0/24 -all" }).Level == CheckLevel.Ok, "SPF basic");
+    Assert(DnsPolicyChecks.Spf("example.invalid", new[] { "v=spf1 -all", "v=spf1 ~all" }).Level == CheckLevel.Error, "SPF duplicate");
+    Assert(DnsPolicyChecks.Spf("example.invalid", new[] { "v=spf1 +all" }).Level == CheckLevel.Warning, "SPF permissive");
+    Assert(DnsPolicyChecks.Spf("example.invalid", new[] { "v=spf1 ip4:192.0.2.1/99 -all" }).Level == CheckLevel.Error, "SPF invalid CIDR");
+    Assert(DnsPolicyChecks.Dmarc("_dmarc.example.invalid", new[] { "v=DMARC1; p=reject; rua=mailto:reports@example.invalid" }).Level == CheckLevel.Ok, "DMARC reject");
+    Assert(DnsPolicyChecks.Dmarc("_dmarc.example.invalid", new[] { "v=DMARC1; p=reject; t=y" }).Level == CheckLevel.Warning, "DMARC test mode");
+    Assert(DnsPolicyChecks.Dmarc("_dmarc.example.invalid", new[] { "v=DMARC1; p=bad" }).Level == CheckLevel.Error, "DMARC invalid p");
+    Assert(DnsPolicyChecks.Dkim("s._domainkey.example.invalid", new[] { "v=DKIM1; p=" }).Level == CheckLevel.Warning, "DKIM revoked");
+    using (var rsa = System.Security.Cryptography.RSA.Create(2048))
+    {
+        string key = Convert.ToBase64String(rsa.ExportSubjectPublicKeyInfo());
+        Assert(DnsPolicyChecks.Dkim("s._domainkey.example.invalid", new[] { "v=DKIM1; k=rsa; p=" + key }).Level == CheckLevel.Ok, "DKIM RSA 2048");
+    }
+    Console.WriteLine("Security and DNS policy smoke tests completed.");
 }
 finally { Directory.Delete(root, true); }
