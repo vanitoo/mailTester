@@ -6,13 +6,14 @@ using System.Net;
 using System.Text;
 using System.Windows.Forms;
 using mailTester.Mail;
+using mailTester.Reports;
 
 namespace mailTester
 {
     public partial class MailTestForm
     {
         private TextBox dnsDomain, dnsSelectors, dnsResolver;
-        private Button bDnsRun, bDnsExport, bDnsCopy;
+        private Button bDnsRun, bDnsExport, bDnsCopy, bDnsPdf;
         private RichTextBox dnsDetail, dnsLog;
         private DataGridView dnsGrid;
         private Label dnsState, dnsSummary;
@@ -43,15 +44,17 @@ namespace mailTester
 
             var result = Card(1, 3, new Padding(0, 0, 0, 10));
             Col(result, 100, true); Row(result, 36); Row(result, 30); FillRow(result);
-            var toolbar = Table(3, 1, Surface);
-            Col(toolbar, 100, true); Col(toolbar, 120); Col(toolbar, 120); FillRow(toolbar);
+            var toolbar = Table(4, 1, Surface);
+            Col(toolbar, 100, true); Col(toolbar, 105); Col(toolbar, 105); Col(toolbar, 105); FillRow(toolbar);
             Span(toolbar, TextLabel("02  /  Результаты", 14, Ink, true), 0, 0);
             bDnsCopy = MakeButton("Копировать", false);
             bDnsExport = MakeButton("Экспорт TXT", false);
-            bDnsCopy.Enabled = bDnsExport.Enabled = false;
+            bDnsPdf=MakeButton("PDF");
+            bDnsPdf.Enabled=bDnsCopy.Enabled = bDnsExport.Enabled = false;
+            bDnsPdf.Click += (_,_)=>{if(dnsReport!=null)AuditReportStyle.SavePdfWithDialog(this,new AuditReport("DNS / Домен",dnsReport.Domain,dnsReport.Resolver,dnsReport.Timestamp,dnsReport.Domain,dnsReport.Findings));};
             bDnsCopy.Click += (_, _) => CopyDnsReport();
             bDnsExport.Click += (_, _) => ExportDnsReport();
-            Span(toolbar, bDnsCopy, 1, 0); Span(toolbar, bDnsExport, 2, 0);
+            Span(toolbar, bDnsCopy, 1, 0); Span(toolbar, bDnsExport, 2, 0); Span(toolbar,bDnsPdf,3,0);
             Span(result, toolbar, 0, 0);
             dnsSummary = TextLabel("Введите домен и нажмите «Проверить».", 10, Muted);
             Span(result, dnsSummary, 0, 1);
@@ -78,14 +81,15 @@ namespace mailTester
             dnsGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = "Summary", HeaderText = "Результат", FillWeight = 41 });
             dnsGrid.CellFormatting += (_, args) => {
                 if (args.RowIndex < 0 || args.ColumnIndex != 2 || dnsGrid.Rows[args.RowIndex].DataBoundItem is not CheckFinding finding) return;
-                args.CellStyle.ForeColor = finding.Level switch {
-                    CheckLevel.Ok => Green, CheckLevel.Error => Red, CheckLevel.Warning => Color.FromArgb(161, 98, 7), _ => Muted
-                };
+                args.CellStyle.ForeColor = AuditReportStyle.ColorFor(finding.Level);
+                args.CellStyle.SelectionForeColor = AuditReportStyle.ColorFor(finding.Level);
+                args.Value = AuditReportStyle.Label(finding.Level);args.FormattingApplied=true;
+            };
             };
             dnsGrid.SelectionChanged += (_, _) => {
                 if (dnsDetail != null)
-                    dnsDetail.Text = dnsGrid.SelectedRows.Count > 0 && dnsGrid.SelectedRows[0].DataBoundItem is CheckFinding finding
-                        ? finding.Name + "\n" + finding.Summary + "\n\n" + finding.Detail + "\n\nРекомендации:\n" + DiagnosticAdvice.For(finding, dnsReport?.Domain) : "";
+                    AuditReportStyle.Show(dnsDetail,dnsGrid.SelectedRows.Count>0 && dnsGrid.SelectedRows[0].DataBoundItem is CheckFinding finding
+                        ? new AuditReport("Детали проверки",dnsReport?.Domain??"",dnsReport?.Resolver??"",dnsReport?.Timestamp??DateTimeOffset.Now,dnsReport?.Domain,new[]{finding}) : null);
             };
             Span(panes, dnsGrid, 0, 0);
             dnsDetail = TextArea(true);
@@ -120,7 +124,7 @@ namespace mailTester
             dnsGrid.DataSource = null;
             dnsDetail.Clear();
             dnsSummary.Text = "Проверяется: " + domain;
-            bDnsCopy.Enabled = bDnsExport.Enabled = false;
+            bDnsPdf.Enabled = bDnsCopy.Enabled = bDnsExport.Enabled = false;
             dnsDomain.Enabled = dnsSelectors.Enabled = dnsResolver.Enabled = false;
             try
             {
@@ -132,7 +136,7 @@ namespace mailTester
                     int ok = report.Findings.Count(x => x.Level == CheckLevel.Ok);
                     int warning = report.Findings.Count(x => x.Level == CheckLevel.Warning);
                     int errors = report.Findings.Count(x => x.Level == CheckLevel.Error);
-                    dnsSummary.Text = $"{domain}  |  OK: {ok}  ·  предупреждений: {warning}  ·  ошибок: {errors}  |  {report.Resolver}";
+                    dnsSummary.Text = $"{domain}  |  OK: {ok}  ·  предупреждений: {warning}  ·  ошибок: {errors}  · не определено: {report.Findings.Count(x => x.Level == CheckLevel.Unknown)} |  {report.Resolver}";
                     Log(dnsLog, $"DNS-проверка завершена: OK {ok}, предупреждений {warning}, ошибок {errors}");
                 });
             }
@@ -140,7 +144,7 @@ namespace mailTester
             {
                 dnsDomain.Enabled = dnsSelectors.Enabled = dnsResolver.Enabled = true;
                 if (dnsReport == null) dnsSummary.Text = "Проверка не завершена. Смотрите журнал.";
-                bDnsCopy.Enabled = bDnsExport.Enabled = dnsReport != null;
+                bDnsPdf.Enabled = bDnsCopy.Enabled = bDnsExport.Enabled = dnsReport != null;
             }
         }
 
@@ -149,7 +153,7 @@ namespace mailTester
             var report = dnsReport;
             if (report == null) return "";
             var sb = new StringBuilder();
-            sb.AppendLine($"MailTester 1.6 | DNS / Domain");
+            sb.AppendLine($"MailTester 1.6.1 | DNS / Domain");
             sb.AppendLine($"Домен: {report.Domain}\nРезолвер: {report.Resolver}\nДата: {report.Timestamp:O}");
             sb.AppendLine("DNS-проверки и обнаружение политики. Для проверки конкретного письма используйте «Инструменты / EML».\n");
             foreach (var item in report.Findings)

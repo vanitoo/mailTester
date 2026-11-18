@@ -93,6 +93,15 @@ try
     job.Enabled=false; store.Save(job);
     Assert(store.Claim()==null,"disabled job not scheduled");
     Assert(store.Delete(job.Id)&&store.History(job.Id).Count==0,"profile and history cascade delete");
-    Console.WriteLine("Security, DNS and monitor smoke tests completed.");
+    Assert(DnsDiagnosticEngine.DescribeDnsCode(2)=="SERVFAIL" && DnsDiagnosticEngine.DescribeDnsCode(999)=="TIMEOUT","DNS error descriptions");
+    Assert(MonitorRunner.StatusOf(new[]{new CheckFinding("DNS","test",CheckLevel.Unknown,"unresolved","")})==MonitorStatus.Unknown,"unknown DNS is not success");
+    var audit=new mailTester.Reports.AuditReport("Комплексный аудит","example.invalid","System",DateTimeOffset.Now,"example.invalid",new[]{
+        new CheckFinding("DNS","example.invalid",CheckLevel.Unknown,"Не определено","TIMEOUT"),
+        new CheckFinding("TLS","example.invalid",CheckLevel.Ok,"Сертификат действителен",new string('Ж',800))});
+    Assert(audit.Count(CheckLevel.Unknown)==1 && mailTester.Reports.AuditReportStyle.Matches(audit.Findings[0],1),"report counts and filter");
+    var pdfPath=Path.Combine(root,"audit.pdf");
+    mailTester.Reports.AuditPdf.Save(audit,pdfPath);
+    Assert(File.Exists(pdfPath)&&Encoding.ASCII.GetString(File.ReadAllBytes(pdfPath),0,5)=="%PDF-","PDF export with Cyrillic/long text");
+    Console.WriteLine("Security, DNS, monitor and report smoke tests completed.");
 }
 finally { Directory.Delete(root, true); }

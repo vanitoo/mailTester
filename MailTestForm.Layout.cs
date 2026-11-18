@@ -37,7 +37,7 @@ namespace mailTester
             AutoScaleMode = AutoScaleMode.Dpi;
             AutoScaleDimensions = new SizeF(96F, 96F);
             Font = new Font("Segoe UI", 10F);
-            Text = "MailTester 1.6 | Mail diagnostics";
+            Text = "MailTester 1.6.1 | Mail diagnostics";
             BackColor = Canvas;
             ForeColor = Ink;
             StartPosition = FormStartPosition.CenterScreen;
@@ -122,7 +122,7 @@ namespace mailTester
             AddNav(sidebar, 7, "Мониторинг", pageMonitor, "Мониторинг", "Профили, состояние, Round Trip и история");
             AddNav(sidebar, 8, "Журнал", pageJournal, "Журнал диагностики", "События текущей сессии без паролей и сырого AUTH");
             sidebar.Controls.Add(TextLabel("   TLS 1.2 / 1.3", 10, Color.FromArgb(134, 239, 172)), 0, 10);
-            sidebar.Controls.Add(TextLabel("   v1.6.0  •  .NET 10", 9, Color.FromArgb(148, 163, 184)), 0, 11);
+            sidebar.Controls.Add(TextLabel("   v1.6.1  •  .NET 10", 9, Color.FromArgb(148, 163, 184)), 0, 11);
 
             ShowPage(pageOverview, "Обзор", "Диагностика и результаты текущей сессии");
             ResumeLayout(true);

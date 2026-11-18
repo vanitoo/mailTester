@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using mailTester.Mail;
+using mailTester.Reports;
 
 namespace mailTester
 {
@@ -17,9 +18,11 @@ namespace mailTester
         private ComboBox toolMode, toolTlsMode;
         private TextBox toolTarget, toolSender, toolHelo, toolResolver, toolFile, toolPort;
         private Label toolTargetLabel, toolSenderLabel, toolHeloLabel, toolPortLabel, toolTlsLabel, toolHelp, toolsState, toolsSummary;
-        private Button bToolsRun, bToolsFile, bToolsCopy, bToolsExport;
+        private Button bToolsRun, bToolsFile, bToolsCopy, bToolsExport, bToolsPdf;
         private RichTextBox toolsResult, toolsLog;
         private string toolsReport = "";
+        private AuditReport toolsSnapshot;
+        private ComboBox toolsFilter;
 
         private void BuildTools()
         {
@@ -68,13 +71,15 @@ namespace mailTester
             Span(input, bToolsRun, 2, 6);
             Span(layout, input, 0, 0);
 
-            var report = Card(1, 3, new Padding(0, 0, 0, 10));
-            Col(report, 100, true); Row(report, 40); Row(report, 27); FillRow(report);
-            var toolbar = Table(3, 1, Surface);
-            Col(toolbar, 100, true); Col(toolbar, 125); Col(toolbar, 125); FillRow(toolbar);
+            var report = Card(1, 4, new Padding(0, 0, 0, 10));
+            Col(report, 100, true); Row(report, 40); Row(report, 28); Row(report, 30); FillRow(report);
+            var toolbar = Table(4, 1, Surface);
+            Col(toolbar, 100, true); Col(toolbar, 105); Col(toolbar, 105); Col(toolbar, 105); FillRow(toolbar);
             Span(toolbar, TextLabel("Результаты и рекомендации", 14, Ink, true), 0, 0);
             bToolsCopy = MakeButton("Копировать", false); bToolsExport = MakeButton("Экспорт TXT", false);
-            bToolsCopy.Enabled = bToolsExport.Enabled = false;
+            bToolsPdf = MakeButton("PDF");
+            bToolsPdf.Enabled = bToolsCopy.Enabled = bToolsExport.Enabled = false;
+            bToolsPdf.Click += (_, _) => AuditReportStyle.SavePdfWithDialog(this, toolsSnapshot);
             bToolsCopy.Click += (_, _) => {
                 if (toolsReport.Length == 0) return;
                 try { Clipboard.SetText(toolsReport); } catch (System.Runtime.InteropServices.ExternalException) { MessageBox.Show(this, "Буфер обмена занят."); }
@@ -86,12 +91,17 @@ namespace mailTester
                 try { File.WriteAllText(dialog.FileName, toolsReport, Encoding.UTF8); }
                 catch (Exception ex) { MessageBox.Show(this, "Ошибка экспорта: " + ex.GetType().Name); }
             };
-            Span(toolbar, bToolsCopy, 1, 0); Span(toolbar, bToolsExport, 2, 0);
+            Span(toolbar, bToolsCopy, 1, 0); Span(toolbar, bToolsExport, 2, 0); Span(toolbar, bToolsPdf, 3, 0);
             Span(report, toolbar, 0, 0);
             toolsSummary = TextLabel("Выберите инструмент и запустите проверку.", 10, Muted);
             Span(report, toolsSummary, 0, 1);
+            toolsFilter = new ComboBox { Dock=DockStyle.Fill,DropDownStyle=ComboBoxStyle.DropDownList,Margin=new Padding(0,1,0,4) };
+            toolsFilter.Items.AddRange(new object[]{"Все результаты","Проблемы / внимание / неизвестно","Только OK","Информация","Пропущено"});
+            toolsFilter.SelectedIndex=0;
             toolsResult = TextArea(true);
-            Span(report, toolsResult, 0, 2);
+            toolsFilter.SelectedIndexChanged += (_,_)=>AuditReportStyle.Show(toolsResult,toolsSnapshot,toolsFilter.SelectedIndex);
+            Span(report, toolsFilter, 0, 2);
+            Span(report, toolsResult, 0, 3);
             Span(layout, report, 0, 1);
             var log = Card(1, 2, Padding.Empty);
             Col(log, 100, true); Row(log, 30); FillRow(log);
@@ -158,7 +168,8 @@ namespace mailTester
             }
             catch (ArgumentException ex) { Log(toolsLog, ex.Message); return; }
 
-            toolsReport = ""; toolsResult.Clear(); bToolsCopy.Enabled = bToolsExport.Enabled = false;
+            toolsSnapshot = null; toolsReport = ""; toolsResult.Clear(); bToolsPdf.Enabled = bToolsCopy.Enabled = bToolsExport.Enabled = false;
+            toolsFilter.SelectedIndex=0;
             toolsSummary.Text = "Выполняется проверка…";
             var fields = new Control[] { toolMode, toolTarget, toolSender, toolHelo, toolResolver, toolFile, toolPort, toolTlsMode, bToolsFile };
             foreach (var field in fields) field.Enabled = false;
@@ -177,19 +188,11 @@ namespace mailTester
                             _ => await engine.LookupRecordsAsync(target, ct)
                         };
                     }, ct);
-                    var sb = new StringBuilder();
-                    sb.AppendLine($"MailTester 1.6 | {toolMode.Text} | {DateTimeOffset.Now:O}");
-                    sb.AppendLine("Резолвер (для DNS/SPF): " + (resolver?.ToString() ?? "системный"));
-                    sb.AppendLine("Результаты относятся к наблюдаемым данным; это не гарантия доставки.\n");
-                    foreach (var item in findings)
-                    {
-                        sb.AppendLine($"[{item.Level}] {item.Section} | {item.Name}\n{item.Summary}\n{item.Detail}");
-                        if (item.Section != "EML") sb.AppendLine("Рекомендации: " + DiagnosticAdvice.For(item, mode == 6 ? target : null));
-                        sb.AppendLine();
-                    }
-                    toolsReport = sb.ToString(); toolsResult.Text = toolsReport;
-                    int warnings = findings.Count(x => x.Level == CheckLevel.Warning), errors = findings.Count(x => x.Level == CheckLevel.Error);
-                    toolsSummary.Text = $"Результатов: {findings.Count} | предупреждений: {warnings} | ошибок: {errors}";
+                    toolsSnapshot = new AuditReport(toolMode.Text,mode==1?Path.GetFileName(file):target,resolver?.ToString()??"Системный DNS",DateTimeOffset.Now,mode==6?target:null,findings.ToArray());
+                    toolsReport=toolsSnapshot.AsText();
+                    AuditReportStyle.Show(toolsResult,toolsSnapshot,toolsFilter.SelectedIndex);
+                    int warnings=toolsSnapshot.Count(CheckLevel.Warning),errors=toolsSnapshot.Count(CheckLevel.Error);
+                    toolsSummary.Text=$"Всего: {findings.Count} | OK: {toolsSnapshot.Count(CheckLevel.Ok)} | Внимание: {warnings} | Ошибки: {errors} | Не определено: {toolsSnapshot.Count(CheckLevel.Unknown)}";
                     Log(toolsLog, $"Проверка завершена: {findings.Count} результатов, предупреждений {warnings}, ошибок {errors}");
                 });
             }
@@ -198,7 +201,7 @@ namespace mailTester
                 toolMode.Enabled = true;
                 SetToolFields();
                 if (toolsReport.Length == 0) toolsSummary.Text = "Проверка не завершена, смотрите журнал.";
-                bToolsCopy.Enabled = bToolsExport.Enabled = toolsReport.Length > 0;
+                bToolsPdf.Enabled = bToolsCopy.Enabled = bToolsExport.Enabled = toolsSnapshot != null;
             }
         }
     }

@@ -66,7 +66,7 @@ namespace mailTester
             receiveProtocol.SelectedIndexChanged += (_, _) => UpdateReceivePort();
             UpdateReceivePort();
             ClearAttachments();
-            Log(journalBox, "MailTester 1.6.0 запущен");
+            Log(journalBox, "MailTester 1.6.1 запущен");
         }
 
         private static void SetupSecurity(ComboBox box, int selected)
