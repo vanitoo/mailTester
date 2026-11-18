@@ -40,7 +40,7 @@ DMARC: DNS Tree Walk (не более 8 целей), psd=y/n, организац
 | Режим | Ввод | Результат |
 | --- | --- | --- |
 | SPF | IP SMTP-клиента, envelope MAIL FROM, HELO | Рекурсивный SPF check через ARSoft.Tools.Net, лимит DNS в валидаторе 10, таймаут 30 с |
-| EML | Исходный .eml, до 50 МБ, при наличии доверенные IP/MAIL FROM/HELO | Received, Authentication-Results, Received-SPF, Return-Path; криптографическая DKIM-проверка до 10 подписей; DMARC alignment |
+| EML | Исходный .eml, до 50 МБ, при наличии доверенные IP/MAIL FROM/HELO | Received, предполагаемый маршрут с интервалами времени, Authentication-Results, Received-SPF, Return-Path; криптографическая DKIM-проверка до 10 подписей; DMARC alignment |
 | PTR / IP Blacklist | IP | IPv4/IPv6 PTR и FCrDNS; DNSBL IPv4 в Spamhaus ZEN и SpamCop с контрольными ответами, ошибки не считаются NOT LISTED |
 | TLS / SSL | DNS-имя, режим и порт | HTTPS/TLS, SMTP/POP3/IMAP implicit TLS или STARTTLS; сертификат, SAN, цепь, срок, системное доверие, TLS 1.2/1.3; без AUTH |
 | WHOIS / RDAP | Точный зарегистрированный домен | RDAP IANA bootstrap; WHOIS TCP 43 fallback, включая .ru/.рф/.su; дата окончания, регистрационные события, регистратор, статусы и NS при наличии |

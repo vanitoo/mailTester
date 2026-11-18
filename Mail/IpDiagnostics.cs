@@ -92,7 +92,9 @@ namespace mailTester.Mail
                     if (!System.Text.RegularExpressions.Regex.IsMatch(x, @"^_[a-zA-Z0-9_-]{1,62}$")) throw new ArgumentException("Некорректное имя записи.");
                     return x;
                 }
-                return DnsPolicyChecks.NormalizeDomain(x);
+                var ascii = new System.Globalization.IdnMapping { UseStd3AsciiRules = true }.GetAscii(x).ToLowerInvariant();
+                if (!System.Text.RegularExpressions.Regex.IsMatch(ascii, @"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")) throw new ArgumentException("Некорректное имя записи.");
+                return ascii;
             }));
             if (owner.Length > 253) throw new ArgumentException("Слишком длинное имя DNS.");
             var types = new[] { QueryType.A, QueryType.AAAA, QueryType.CNAME, QueryType.MX, QueryType.NS, QueryType.SOA, QueryType.TXT,

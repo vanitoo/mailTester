@@ -146,7 +146,11 @@ namespace mailTester
                     target = DnsPolicyChecks.NormalizeDomain(target);
                     if (!int.TryParse(toolPort.Text, out port) || port < 1 || port > 65535) throw new ArgumentException("Некорректный порт.");
                 }
-                if (mode is 4 or 6) target = DnsPolicyChecks.NormalizeDomain(target);
+                if (mode is 4 or 6)
+                {
+                    target = DnsPolicyChecks.NormalizeDomain(target);
+                    if (!target.Contains('.')) throw new ArgumentException("Укажите зарегистрированное доменное имя.");
+                }
                 if (mode == 6) DnsPolicyChecks.ParseSelectors(senderAddress);
                 if (mode == 5 && target.Length == 0) throw new ArgumentException("Введите DNS-имя.");
                 if (toolResolver.Enabled && !string.IsNullOrWhiteSpace(toolResolver.Text) && !IPAddress.TryParse(toolResolver.Text, out resolver))

@@ -13,6 +13,7 @@ namespace mailTester.Mail
         public async Task<IReadOnlyList<CheckFinding>> AuditDomainAsync(string domain, string[] selectors, IProgress<string> progress, CancellationToken ct)
         {
             domain = DnsPolicyChecks.NormalizeDomain(domain);
+            if (!domain.Contains('.')) throw new ArgumentException("Укажите зарегистрированное доменное имя.");
             var rows = (await InspectAsync(domain, selectors, progress, ct).ConfigureAwait(false)).Findings.ToList();
 
             progress?.Report("Регистрационные сведения и TLS сайта");
@@ -22,7 +23,7 @@ namespace mailTester.Mail
             var wwwIps = await Task.WhenAll(Query(www, QueryType.A, ct), Query(www, QueryType.AAAA, ct)).ConfigureAwait(false);
             Task<IReadOnlyList<CheckFinding>> wwwTls = wwwIps.Any(x => !x.Failed && Addresses(x).Length > 0)
                 ? TlsDiagnostics.InspectAsync(www, 443, TlsMode.Https, ct)
-                : Task.FromResult<IReadOnlyList<CheckFinding>>(new[] { new CheckFinding("TLS", www, CheckLevel.Skipped, "www не разрешается", "HTTPS не проверялся.") });
+                : Task.FromResult<IReadOnlyList<CheckFinding>>(new[] { new CheckFinding("TLS", www, CheckLevel.Skipped, wwwIps.Any(x => x.Failed) ? "DNS www не проверен" : "www не разрешается", "HTTPS не проверялся.") });
             await Task.WhenAll(registration, website, wwwTls).ConfigureAwait(false);
             rows.AddRange(await registration.ConfigureAwait(false));
             rows.AddRange(await website.ConfigureAwait(false));

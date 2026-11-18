@@ -185,6 +185,7 @@ namespace mailTester.Mail
             var rows = new List<CheckFinding>();
             rows.Add(new("EML", "Overview", CheckLevel.Info, message.Subject ?? "(без темы)",
                 $"From: {message.From}\nTo: {message.To}\nDate: {message.Date:O}\nMessage-ID: {message.MessageId}\nAttachments: {message.Attachments.Count()}"));
+            rows.AddRange(MailHeaderDiagnostics.AnalyzeRoute(message.Headers.Where(h => h.Field.Equals("Received", StringComparison.OrdinalIgnoreCase)).Select(h => h.Value)));
             foreach (var h in message.Headers.Where(h => h.Field.Equals("Received", StringComparison.OrdinalIgnoreCase) ||
                                                        h.Field.Equals("Authentication-Results", StringComparison.OrdinalIgnoreCase) ||
                                                        h.Field.Equals("Received-SPF", StringComparison.OrdinalIgnoreCase) ||

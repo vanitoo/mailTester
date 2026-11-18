@@ -70,6 +70,11 @@ try
     Assert(DnsDiagnosticEngine.ReverseName(System.Net.IPAddress.Parse("::1")).StartsWith("1.0.0.0."), "IPv6 PTR owner");
     Assert(DnsDiagnosticEngine.ExpectedTestPolicy("reject") == "quarantine" && DnsDiagnosticEngine.ExpectedTestPolicy("quarantine") == "none", "DMARC testing policy downgrade");
     Assert(TlsDiagnostics.DefaultPort(TlsMode.Https) == 443 && TlsDiagnostics.DefaultPort(TlsMode.SmtpImplicit) == 465, "TLS port defaults");
+    var route = MailHeaderDiagnostics.ParseRoute(new[] {
+        "from mx2.example.invalid by mx3.example.invalid; Wed, 18 Nov 2026 13:00:05 +0000",
+        "from mx1.example.invalid by mx2.example.invalid; Wed, 18 Nov 2026 13:00:00 +0000"
+    });
+    Assert(route.Count == 2 && route[0].From == "mx1.example.invalid" && route[1].DelaySeconds == 5, "Received hop order and delay");
     Console.WriteLine("Security and DNS policy smoke tests completed.");
 }
 finally { Directory.Delete(root, true); }
