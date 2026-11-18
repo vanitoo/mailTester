@@ -626,7 +626,12 @@ namespace Tbc.Common.Mail.Pop3.Mime
                     try
                     {
                         CallTrace("   Get SSL authentication");
-                        ((SslStream)pop3Stream).AuthenticateAsClient(popServer);
+                        ((SslStream)pop3Stream).AuthenticateAsClient(new SslClientAuthenticationOptions
+                        {
+                            TargetHost = popServer,
+                            EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12 |
+                                                  System.Security.Authentication.SslProtocols.Tls13
+                        });
                     }
                     catch (Exception ex)
                     {

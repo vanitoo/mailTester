@@ -16,6 +16,12 @@ namespace mailTester {
     public partial class MailTestForm : Form {
         public MailTestForm() {
             InitializeComponent();
+            FormClosed += (_, _) => {
+                if (dgvMessages.DataSource is IList<RxMailMessage> messages)
+                    foreach (var message in messages) message.Dispose();
+                tbPassword.Clear();
+                tbPop3Pass.Clear();
+            };
         }
 
         private void bAttachment_Click(object sender, EventArgs e) {
@@ -120,9 +126,13 @@ namespace mailTester {
         }
 
         private void dgvMessages_SelectionChanged(object sender, EventArgs e) {
-            if (dgvMessages.SelectedRows.Count <= 0) return;
+            if (dgvMessages.SelectedRows.Count <= 0) {
+                rtbPop3Message.Clear();
+                bSaveAttachment.Visible = false;
+                return;
+            }
             rtbPop3Message.Text = Convert.ToString(dgvMessages.SelectedRows[0].Cells["Body"].Value);
-            bSaveAttachment.Visible = (bool)dgvMessages.SelectedRows[0].Cells["HasAttachment"].Value;
+            bSaveAttachment.Visible = dgvMessages.SelectedRows[0].Cells["HasAttachment"].Value is bool hasAttachment && hasAttachment;
         }
 
         private void MailTestForm_Load(object sender, EventArgs e) {
@@ -163,9 +173,8 @@ namespace mailTester {
             string errText = default(string);
             bool saved = message.SaveAttachments(selectAttachmentFolder.SelectedPath, out errText);
             var logText = saved
-                ? string.Format("{0} | В каталог {1} Сохранено вложений {2} : {3}\n",
-                    DateTime.Now, selectAttachmentFolder.SelectedPath, message.Attachments.Count,
-                    string.Join(", ", message.Attachments.Select(m => m.Name).ToArray()))
+                ? string.Format("{0} | В каталог {1} сохранено вложений: {2}\n",
+                    DateTime.Now, selectAttachmentFolder.SelectedPath, message.Attachments.Count)
                 : string.Format("{0} | Ошибка: {1}\n", DateTime.Now, errText);
             rtbPop3Status.AppendText(logText);
         }

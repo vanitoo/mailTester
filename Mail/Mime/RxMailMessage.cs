@@ -421,10 +421,19 @@ namespace Tbc.Common.Mail.Pop3.Mime
                 try { output = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None); }
                 catch (IOException) when (File.Exists(target) || Directory.Exists(target)) { continue; }
 
-                using (output)
+                try
                 {
-                    if (content.CanSeek) content.Position = 0;
-                    content.CopyTo(output);
+                    using (output)
+                    {
+                        if (content.CanSeek) content.Position = 0;
+                        content.CopyTo(output);
+                    }
+                }
+                catch
+                {
+                    // Remove only the file created by this attempt; never touch existing files.
+                    try { File.Delete(target); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+                    throw;
                 }
                 return candidate;
             }
