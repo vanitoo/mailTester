@@ -24,7 +24,7 @@ namespace mailTester
         private Button bSend, bGetMail, bSaveAttachment, bAttachment, bClearAttachments, bClearJournal, bCopyJournal, bExportJournal, bCancelGlobal;
         private CheckBox revealSmtp, revealReceive;
         private DataGridView dgvMessages;
-        private Panel workspace, pageOverview, pageSend, pageGet, pageJournal, pageDns, pageTools;
+        private Panel workspace, pageOverview, pageSend, pageGet, pageJournal, pageDns, pageTools, pageMonitor;
         private Label pageTitle, pageSubtitle, statusLabel, metricSent, metricReceived, metricErrors, metricLast, attachmentInfo, inboxCount;
         private Label previewSubject, previewMeta, previewFiles, sendState, receiveState;
         private readonly Dictionary<Panel, Button> navigation = new Dictionary<Panel, Button>();
@@ -37,7 +37,7 @@ namespace mailTester
             AutoScaleMode = AutoScaleMode.Dpi;
             AutoScaleDimensions = new SizeF(96F, 96F);
             Font = new Font("Segoe UI", 10F);
-            Text = "MailTester 1.5 | Mail diagnostics";
+            Text = "MailTester 1.6 | Mail diagnostics";
             BackColor = Canvas;
             ForeColor = Ink;
             StartPosition = FormStartPosition.CenterScreen;
@@ -50,10 +50,10 @@ namespace mailTester
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             Controls.Add(root);
 
-            var sidebar = Table(1, 11, Navy);
+            var sidebar = Table(1, 12, Navy);
             sidebar.Padding = new Padding(12, 20, 12, 14);
             sidebar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            foreach (int height in new[] { 70, 32, 48, 48, 48, 48, 48, 48 })
+            foreach (int height in new[] { 70, 32, 48, 48, 48, 48, 48, 48, 48 })
                 sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
             sidebar.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
@@ -104,6 +104,7 @@ namespace mailTester
             pageJournal = NewPage();
             pageDns = NewPage();
             pageTools = NewPage();
+            pageMonitor = NewPage();
 
             BuildOverview();
             BuildSend();
@@ -111,15 +112,17 @@ namespace mailTester
             BuildJournal();
             BuildDns();
             BuildTools();
+            BuildMonitor();
 
             AddNav(sidebar, 2, "Обзор", pageOverview, "Обзор", "Диагностика и результаты текущей сессии");
             AddNav(sidebar, 3, "SMTP  ·  Отправка", pageSend, "SMTP / Отправка", "Проверка подключения, авторизации и отправки");
             AddNav(sidebar, 4, "POP3 / IMAP", pageGet, "POP3 / IMAP / Получение", "Проверка входящей почты и просмотр сообщений");
             AddNav(sidebar, 5, "DNS  ·  Домен", pageDns, "DNS / Домен", "DNS, MX, SPF, DKIM и DMARC");
             AddNav(sidebar, 6, "Инструменты", pageTools, "Расширенная диагностика", "SPF / EML / PTR / DNSBL / TLS / WHOIS / DNS");
-            AddNav(sidebar, 7, "Журнал", pageJournal, "Журнал диагностики", "События текущей сессии без паролей и сырого AUTH");
-            sidebar.Controls.Add(TextLabel("   TLS 1.2 / 1.3", 10, Color.FromArgb(134, 239, 172)), 0, 9);
-            sidebar.Controls.Add(TextLabel("   v1.5.0  •  .NET 10", 9, Color.FromArgb(148, 163, 184)), 0, 10);
+            AddNav(sidebar, 7, "Мониторинг", pageMonitor, "Мониторинг", "Профили, состояние, Round Trip и история");
+            AddNav(sidebar, 8, "Журнал", pageJournal, "Журнал диагностики", "События текущей сессии без паролей и сырого AUTH");
+            sidebar.Controls.Add(TextLabel("   TLS 1.2 / 1.3", 10, Color.FromArgb(134, 239, 172)), 0, 10);
+            sidebar.Controls.Add(TextLabel("   v1.6.0  •  .NET 10", 9, Color.FromArgb(148, 163, 184)), 0, 11);
 
             ShowPage(pageOverview, "Обзор", "Диагностика и результаты текущей сессии");
             ResumeLayout(true);
@@ -481,7 +484,7 @@ namespace mailTester
             bClearJournal = MakeButton("Очистить", false);
             bCopyJournal.Click += (_, _) => CopyJournal();
             bExportJournal.Click += (_, _) => ExportJournal();
-            bClearJournal.Click += (_, _) => { journalBox.Clear(); rtbStatus.Clear(); rtbPop3Status.Clear(); dnsLog.Clear(); toolsLog.Clear(); };
+            bClearJournal.Click += (_, _) => { journalBox.Clear(); rtbStatus.Clear(); rtbPop3Status.Clear(); dnsLog.Clear(); toolsLog.Clear(); monitorLog.Clear(); };
             Span(toolbar, bCopyJournal, 1, 0); Span(toolbar, bExportJournal, 2, 0); Span(toolbar, bClearJournal, 3, 0);
             Span(card, toolbar, 0, 0);
             journalBox = TextArea(true, true);

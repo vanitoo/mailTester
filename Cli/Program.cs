@@ -80,7 +80,7 @@ MailTester CLI 1.6
         if (!IPAddress.TryParse(text,out var ip)) throw new ArgumentException("Invalid IP");
         return ip;
     }
-    private static string Q(object value) => "\"" + (Convert.ToString(value,CultureInfo.InvariantCulture) ?? "").Replace("\",""\"\"") + "\"";
+    private static string Q(object value) { string s = Convert.ToString(value,CultureInfo.InvariantCulture) ?? ""; return "\"" + s.Replace("\"","\"\"") + "\""; }
     private static int Code(MonitorStatus status) => status switch { MonitorStatus.Ok=>0, MonitorStatus.Warning=>1, MonitorStatus.Error=>2, _=>3 };
     private static MonitorStatus Worst(IEnumerable<MonitorStatus> statuses) =>
         statuses.DefaultIfEmpty(MonitorStatus.Ok).OrderByDescending(Code).First();
