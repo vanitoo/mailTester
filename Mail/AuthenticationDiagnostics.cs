@@ -88,7 +88,7 @@ namespace mailTester.Mail
             {
                 var answer = await Query("_dmarc." + name, QueryType.TXT, ct).ConfigureAwait(false);
                 if (answer.Failed) { trace.Add(name + ": DNS error " + answer.Text); unknown = true; break; }
-                var records = answer.Txt.Where(x => Regex.IsMatch(x, @"^v\s*=\s*DMARC1\s*(?:;|$)", RegexOptions.IgnoreCase)).ToArray();
+                var records = answer.Txt.Where(x => Regex.IsMatch(x, @"^v\s*=\s*DMARC1\s*(?:;|$)")).ToArray();
                 if (records.Length != 1 || !DnsPolicyChecks.Tags(records[0], out var tags))
                 {
                     trace.Add(name + (records.Length > 1 ? ": duplicate/discarded" : ": no valid record"));
@@ -146,9 +146,14 @@ namespace mailTester.Mail
             if (d.Unknown) return new("DMARC", d.Domain, CheckLevel.Warning, "Неполный DNS Tree Walk", detail);
             if (d.Policy == null) return new("DMARC", d.Domain, CheckLevel.Warning, "Применимая политика не обнаружена", detail);
             bool test = d.Tags.TryGetValue("t", out string flag) && flag == "y";
-            return new("DMARC", d.Domain, d.Policy == "none" || test ? CheckLevel.Warning : CheckLevel.Ok,
+            if (test) detail += "\n\nRFC 9989 t=y: ожидаемая политика для FAIL на один уровень мягче: " + ExpectedTestPolicy(d.Policy);
+            if (d.Tags.ContainsKey("pct")) detail += "\npct: historic в RFC 9989; не полагайтесь на процентную выборку.";
+            if (!d.Tags.ContainsKey("rua")) detail += "\nrua отсутствует: агрегированные отчёты не запрошены.";
+            return new("DMARC", d.Domain, d.Policy == "none" || test || d.Tags.ContainsKey("pct") ? CheckLevel.Warning : CheckLevel.Ok,
                 $"p={d.Policy}" + (d.Source == d.Domain ? " (прямая)" : " (наследуется)") + (test ? "; t=y" : ""), detail);
         }
+
+        public static string ExpectedTestPolicy(string policy) => policy switch { "reject" => "quarantine", "quarantine" => "none", _ => "none" };
 
         private sealed class KeyLocator : DkimPublicKeyLocatorBase
         {
@@ -209,7 +214,8 @@ namespace mailTester.Mail
                     bool verified = await verifier.VerifyAsync(message, header, ct).ConfigureAwait(false);
                     if (locator.DnsFailed) { unknownSignature = true; rows.Add(new("DKIM", name, CheckLevel.Warning, "DNS lookup incomplete", "Проверка подписи не завершена.")); continue; }
                     if (verified && signing != null) signedDomains.Add(DnsPolicyChecks.NormalizeDomain(signing));
-                    rows.Add(new("DKIM", name, verified ? CheckLevel.Ok : CheckLevel.Error, verified ? "PASS: подпись проверена" : "FAIL: подпись не подтверждена", "MimeKit проверяет тело и подписанные заголовки по текущему ключу DNS. Изменённый EML или ротация ключей могут изменить результат."));
+                    bool partialBody = tags.ContainsKey("l");
+                    rows.Add(new("DKIM", name, verified ? partialBody ? CheckLevel.Warning : CheckLevel.Ok : CheckLevel.Error, verified ? "PASS: подпись проверена" + (partialBody ? " (l=)" : "") : "FAIL: подпись не подтверждена", "MimeKit проверяет подписанные данные по текущему ключу DNS. Изменённый EML или ротация ключей могут изменить результат." + (partialBody ? " Тег l= допускает неподписанный хвост тела; не считайте всё тело аутентифицированным." : "")));
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
                 catch (Exception ex) { unknownSignature = true; rows.Add(new("DKIM", name, CheckLevel.Warning, "Не удалось проверить подпись", ex.GetType().Name)); }
@@ -218,6 +224,11 @@ namespace mailTester.Mail
             var authorDomains = message.From.Mailboxes.Select(x => x.Address.Split('@').Last()).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
             if (authorDomains.Length != 1) { rows.Add(new("DMARC", "EML", CheckLevel.Skipped, "Нужен единственный авторский домен", "")); return rows; }
             string author = DnsPolicyChecks.NormalizeDomain(authorDomains[0]);
+            if (message.Headers.Count(x => x.Id == HeaderId.From) != 1)
+            {
+                rows.Add(new("DMARC", author, CheckLevel.Skipped, "Неоднозначный From", "Нужен ровно один заголовок From."));
+                return rows;
+            }
             progress?.Report("DMARC: поиск политики и alignment");
             var policy = await DiscoverDmarcAsync(author, ct).ConfigureAwait(false);
             rows.Add(DmarcFinding(policy));

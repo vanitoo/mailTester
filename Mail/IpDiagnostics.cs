@@ -97,7 +97,7 @@ namespace mailTester.Mail
             if (owner.Length > 253) throw new ArgumentException("Слишком длинное имя DNS.");
             var types = new[] { QueryType.A, QueryType.AAAA, QueryType.CNAME, QueryType.MX, QueryType.NS, QueryType.SOA, QueryType.TXT,
                 QueryType.PTR, QueryType.SRV, QueryType.CAA, QueryType.DS, QueryType.DNSKEY, QueryType.TLSA, QueryType.SSHFP,
-                QueryType.NAPTR, QueryType.URI, QueryType.CERT };
+                QueryType.NAPTR, (QueryType)256, QueryType.CERT };
             var replies = await Task.WhenAll(types.Select(t => Query(owner, t, ct))).ConfigureAwait(false);
             return replies.Select(x => Raw("DNS", x)).Append(new("DNS", owner, CheckLevel.Info, "Запросы известных типов", "Записи других имён/поддоменов не перечисляются. DNSSEC не валидируется.")).ToArray();
         }

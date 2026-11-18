@@ -68,6 +68,7 @@ try
     Assert(DnsDiagnosticEngine.TreeWalkNames("mail.example.com").SequenceEqual(new[] { "mail.example.com", "example.com", "com" }), "DMARC Tree Walk parent order");
     Assert(DnsDiagnosticEngine.ReverseName(System.Net.IPAddress.Parse("192.0.2.10")) == "10.2.0.192.in-addr.arpa", "IPv4 PTR owner");
     Assert(DnsDiagnosticEngine.ReverseName(System.Net.IPAddress.Parse("::1")).StartsWith("1.0.0.0."), "IPv6 PTR owner");
+    Assert(DnsDiagnosticEngine.ExpectedTestPolicy("reject") == "quarantine" && DnsDiagnosticEngine.ExpectedTestPolicy("quarantine") == "none", "DMARC testing policy downgrade");
     Assert(TlsDiagnostics.DefaultPort(TlsMode.Https) == 443 && TlsDiagnostics.DefaultPort(TlsMode.SmtpImplicit) == 465, "TLS port defaults");
     Console.WriteLine("Security and DNS policy smoke tests completed.");
 }

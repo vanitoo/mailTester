@@ -30,7 +30,7 @@ namespace mailTester
             Col(input, 40, true); Col(input, 36, true); Col(input, 24, true);
             Row(input, 21); Row(input, 32); Row(input, 20); Row(input, 32); Row(input, 20); Row(input, 32); FillRow(input);
             toolMode = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList, Margin = new Padding(0, 3, 8, 4) };
-            toolMode.Items.AddRange(new object[] { "SPF / SMTP client", "EML / DKIM / DMARC", "PTR / IP Blacklist", "TLS / SSL / HTTPS", "WHOIS / RDAP", "DNS / записи имени" });
+            toolMode.Items.AddRange(new object[] { "SPF / SMTP client", "EML / DKIM / DMARC", "PTR / IP Blacklist", "TLS / SSL / HTTPS", "WHOIS / RDAP", "DNS / записи имени", "Комплексный аудит домена" });
             toolTarget = Edit();
             toolResolver = Edit("Системный DNS");
             toolTargetLabel = TextLabel("IP / домен / имя", 9, Muted, true);
@@ -108,11 +108,14 @@ namespace mailTester
             bool auth = mode == 0 || mode == 1;
             bool tls = mode == 3;
             toolTarget.Enabled = true;
-            toolSender.Enabled = toolHelo.Enabled = auth;
+            toolSender.Enabled = auth || mode == 6;
+            toolHelo.Enabled = auth;
+            toolSenderLabel.Text = mode == 6 ? "DKIM selectors (необязательно)" : "MAIL FROM";
+            toolSender.PlaceholderText = mode == 6 ? "selector1, selector2" : "SMTP envelope sender";
             toolFile.Enabled = bToolsFile.Enabled = mode == 1;
             toolTlsMode.Enabled = toolPort.Enabled = tls;
-            toolResolver.Enabled = mode is 0 or 1 or 2 or 5;
-            toolTargetLabel.Text = mode is 0 or 1 or 2 ? "IP SMTP-клиента" : mode == 3 ? "Имя сервера / сайта" : mode == 4 ? "Зарегистрированный домен" : "Точное имя записи";
+            toolResolver.Enabled = mode is 0 or 1 or 2 or 5 or 6;
+            toolTargetLabel.Text = mode is 0 or 1 or 2 ? "IP SMTP-клиента" : mode == 3 ? "Имя сервера / сайта" : mode is 4 or 6 ? "Зарегистрированный домен" : "Точное имя записи";
             toolTarget.PlaceholderText = mode is 0 or 1 or 2 ? "192.0.2.10" : mode == 3 ? "www.example.com" : "example.com";
             toolHelp.Text = mode switch {
                 0 => "Укажите IP SMTP-клиента, MAIL FROM и HELO (для <> обязательно).",
@@ -120,6 +123,7 @@ namespace mailTester
                 2 => "PTR/FCrDNS + публичные DNSBL (IPv4). IP отправляется операторам списков.",
                 3 => "Проверка TLS-сертификата и цепочки; без авторизации.",
                 4 => "RDAP IANA, при отсутствии WHOIS; домен передаётся реестру.",
+                6 => "DNS, WHOIS, TLS сайта и MX, обратный DNS; проверяйте свой домен.",
                 _ => "Запросы известных типов для имени, а не перечисление всех поддоменов."
             };
         }
@@ -142,7 +146,8 @@ namespace mailTester
                     target = DnsPolicyChecks.NormalizeDomain(target);
                     if (!int.TryParse(toolPort.Text, out port) || port < 1 || port > 65535) throw new ArgumentException("Некорректный порт.");
                 }
-                if (mode == 4) target = DnsPolicyChecks.NormalizeDomain(target);
+                if (mode is 4 or 6) target = DnsPolicyChecks.NormalizeDomain(target);
+                if (mode == 6) DnsPolicyChecks.ParseSelectors(senderAddress);
                 if (mode == 5 && target.Length == 0) throw new ArgumentException("Введите DNS-имя.");
                 if (toolResolver.Enabled && !string.IsNullOrWhiteSpace(toolResolver.Text) && !IPAddress.TryParse(toolResolver.Text, out resolver))
                     throw new ArgumentException("Некорректный IP DNS-резолвера.");
@@ -164,6 +169,7 @@ namespace mailTester
                             0 => await engine.CheckSpfAsync(ip, senderAddress, helo, ct),
                             1 => await engine.AnalyzeEmlAsync(file, ip, senderAddress, helo, progress, ct),
                             2 => await engine.CheckIpAsync(ip, true, progress, ct),
+                            6 => await engine.AuditDomainAsync(target, DnsPolicyChecks.ParseSelectors(senderAddress), progress, ct),
                             _ => await engine.LookupRecordsAsync(target, ct)
                         };
                     }, ct);
@@ -174,7 +180,7 @@ namespace mailTester
                     foreach (var item in findings)
                     {
                         sb.AppendLine($"[{item.Level}] {item.Section} | {item.Name}\n{item.Summary}\n{item.Detail}");
-                        if (item.Section != "EML") sb.AppendLine("Рекомендации: " + DiagnosticAdvice.For(item));
+                        if (item.Section != "EML") sb.AppendLine("Рекомендации: " + DiagnosticAdvice.For(item, mode == 6 ? target : null));
                         sb.AppendLine();
                     }
                     toolsReport = sb.ToString(); toolsResult.Text = toolsReport;
