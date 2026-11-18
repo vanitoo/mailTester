@@ -64,7 +64,7 @@ namespace mailTester
             receiveProtocol.SelectedIndexChanged += (_, _) => UpdateReceivePort();
             UpdateReceivePort();
             ClearAttachments();
-            Log(journalBox, "MailTester 1.4.0 запущен");
+            Log(journalBox, "MailTester 1.5.0 запущен");
         }
 
         private static void SetupSecurity(ComboBox box, int selected)
@@ -99,7 +99,7 @@ namespace mailTester
 
         private void Log(RichTextBox target, string message)
         {
-            string prefix = target == rtbStatus ? "SMTP" : target == rtbPop3Status ? "RECV" : target == dnsLog ? "DNS" : "APP";
+            string prefix = target == rtbStatus ? "SMTP" : target == rtbPop3Status ? "RECV" : target == dnsLog ? "DNS" : target == toolsLog ? "TOOL" : "APP";
             string line = $"{DateTime.Now:HH:mm:ss} | {prefix,-4} | {message}\n";
             AppendLog(target, line);
             if (target != journalBox) AppendLog(journalBox, line);
@@ -195,15 +195,15 @@ namespace mailTester
             operation = cts;
             activeButton = button;
             string originalText = button.Text;
-            string operationName = button == bSend ? "SMTP" : button == bGetMail ? "Получение" : button == bDnsRun ? "DNS" : "Вложения";
-            var otherButtons = new[] { bSend, bGetMail, bSaveAttachment, bAttachment, bClearAttachments, bDnsRun }.Where(b => b != button).ToArray();
+            string operationName = button == bSend ? "SMTP" : button == bGetMail ? "Получение" : button == bDnsRun ? "DNS" : button == bToolsRun ? "Инструменты" : "Вложения";
+            var otherButtons = new[] { bSend, bGetMail, bSaveAttachment, bAttachment, bClearAttachments, bDnsRun, bToolsRun }.Where(b => b != button).ToArray();
             foreach (var b in otherButtons) b.Enabled = false;
             button.Text = "Отмена";
             bCancelGlobal.Visible = true;
             bClearJournal.Enabled = false;
             statusLabel.Text = "●  Выполняется";
             statusLabel.ForeColor = Accent;
-            Label localState = status == rtbStatus ? sendState : status == dnsLog ? dnsState : receiveState;
+            Label localState = status == rtbStatus ? sendState : status == dnsLog ? dnsState : status == toolsLog ? toolsState : receiveState;
             string originalState = localState.Text;
             localState.Text = "Выполняется: " + operationName;
             string outcome = "Готово";

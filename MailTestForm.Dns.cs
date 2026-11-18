@@ -149,9 +149,9 @@ namespace mailTester
             var report = dnsReport;
             if (report == null) return "";
             var sb = new StringBuilder();
-            sb.AppendLine($"MailTester 1.4 | DNS / Domain");
+            sb.AppendLine($"MailTester 1.5 | DNS / Domain");
             sb.AppendLine($"Домен: {report.Domain}\nРезолвер: {report.Resolver}\nДата: {report.Timestamp:O}");
-            sb.AppendLine("Статический анализ DNS. Не доказывает доставку или SPF/DKIM/DMARC PASS для письма.\n");
+            sb.AppendLine("DNS-проверки и обнаружение политики. Для проверки конкретного письма используйте «Инструменты / EML».\n");
             foreach (var item in report.Findings)
                 sb.AppendLine($"[{item.Level}] {item.Section} | {item.Name}\n{item.Summary}\n{item.Detail}\nРекомендации: {DiagnosticAdvice.For(item, report.Domain)}\n");
             return sb.ToString();

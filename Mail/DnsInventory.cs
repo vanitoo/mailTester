@@ -17,8 +17,7 @@ namespace mailTester.Mail
                 ("_autodiscover._tcp." + domain, QueryType.SRV), ("_submission._tcp." + domain, QueryType.SRV),
                 ("_imaps._tcp." + domain, QueryType.SRV), ("_pop3s._tcp." + domain, QueryType.SRV),
                 ("_mta-sts." + domain, QueryType.TXT), ("_smtp._tls." + domain, QueryType.TXT),
-                ("default._bimi." + domain, QueryType.TXT),
-                (domain, (QueryType)64), (domain, (QueryType)65), ("www." + domain, (QueryType)65)
+                ("default._bimi." + domain, QueryType.TXT)
             };
             var answers = await Task.WhenAll(checks.Select(x => Query(x.Name, x.Type, ct))).ConfigureAwait(false);
             var rows = answers.Select(x => Raw("DNS", x)).ToList();

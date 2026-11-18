@@ -64,6 +64,11 @@ try
         string key = Convert.ToBase64String(rsa.ExportSubjectPublicKeyInfo());
         Assert(DnsPolicyChecks.Dkim("s._domainkey.example.invalid", new[] { "v=DKIM1; k=rsa; p=" + key }).Level == CheckLevel.Ok, "DKIM RSA 2048");
     }
+    Assert(DnsDiagnosticEngine.TreeWalkNames("a.b.c.d.e.f.g.h.i.example.com").Length == 8, "bounded DMARC DNS Tree Walk");
+    Assert(DnsDiagnosticEngine.TreeWalkNames("mail.example.com").SequenceEqual(new[] { "mail.example.com", "example.com", "com" }), "DMARC Tree Walk parent order");
+    Assert(DnsDiagnosticEngine.ReverseName(System.Net.IPAddress.Parse("192.0.2.10")) == "10.2.0.192.in-addr.arpa", "IPv4 PTR owner");
+    Assert(DnsDiagnosticEngine.ReverseName(System.Net.IPAddress.Parse("::1")).StartsWith("1.0.0.0."), "IPv6 PTR owner");
+    Assert(TlsDiagnostics.DefaultPort(TlsMode.Https) == 443 && TlsDiagnostics.DefaultPort(TlsMode.SmtpImplicit) == 465, "TLS port defaults");
     Console.WriteLine("Security and DNS policy smoke tests completed.");
 }
 finally { Directory.Delete(root, true); }

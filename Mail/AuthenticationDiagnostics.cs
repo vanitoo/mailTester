@@ -153,6 +153,7 @@ namespace mailTester.Mail
         private sealed class KeyLocator : DkimPublicKeyLocatorBase
         {
             private readonly DnsDiagnosticEngine engine;
+            public bool DnsFailed { get; set; }
             public KeyLocator(DnsDiagnosticEngine engine) { this.engine = engine; }
 
             public override AsymmetricKeyParameter LocatePublicKey(string methods, string domain, string selector, CancellationToken cancellationToken = default) =>
@@ -165,7 +166,7 @@ namespace mailTester.Mail
                 var s = DnsPolicyChecks.ParseSelectors(selector);
                 if (s.Length != 1 || s[0].Length + d.Length + 12 > 253) throw new FormatException("DKIM selector");
                 var answer = await engine.Query(s[0] + "._domainkey." + d, QueryType.TXT, cancellationToken).ConfigureAwait(false);
-                if (answer.Failed) throw new IOException("DKIM DNS query failed");
+                if (answer.Failed) { DnsFailed = true; throw new IOException("DKIM DNS query failed"); }
                 var keys = answer.Txt.Where(x => Regex.IsMatch(x, @"(?:^|;)\s*p\s*=", RegexOptions.IgnoreCase)).ToArray();
                 if (keys.Length != 1) throw new FormatException("No unique key");
                 return GetPublicKey(keys[0]);
@@ -189,7 +190,8 @@ namespace mailTester.Mail
             SpfResult spf = await EvaluateSpfAsync(ip, mailFrom, helo, ct).ConfigureAwait(false);
             rows.Add(spf.Finding);
             progress?.Report("DKIM: криптографическая проверка исходного письма");
-            var verifier = new DkimVerifier(new KeyLocator(this));
+            var locator = new KeyLocator(this);
+            var verifier = new DkimVerifier(locator);
             var signedDomains = new List<string>();
             bool unknownSignature = false;
             var signatures = message.Headers.Where(h => h.Id == HeaderId.DkimSignature).ToArray();
@@ -203,7 +205,9 @@ namespace mailTester.Mail
                 string name = (selector ?? "?") + "._domainkey." + (signing ?? "?");
                 try
                 {
+                    locator.DnsFailed = false;
                     bool verified = await verifier.VerifyAsync(message, header, ct).ConfigureAwait(false);
+                    if (locator.DnsFailed) { unknownSignature = true; rows.Add(new("DKIM", name, CheckLevel.Warning, "DNS lookup incomplete", "Проверка подписи не завершена.")); continue; }
                     if (verified && signing != null) signedDomains.Add(DnsPolicyChecks.NormalizeDomain(signing));
                     rows.Add(new("DKIM", name, verified ? CheckLevel.Ok : CheckLevel.Error, verified ? "PASS: подпись проверена" : "FAIL: подпись не подтверждена", "MimeKit проверяет тело и подписанные заголовки по текущему ключу DNS. Изменённый EML или ротация ключей могут изменить результат."));
                 }

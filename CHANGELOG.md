@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.5.0 (2026-11-18)
+
+- Рекурсивная SPF-проверка конкретного SMTP-клиента через ARSoft.Tools.Net 3.6.1.
+- EML: просмотр заголовков и криптографическая проверка DKIM; DMARC Tree Walk, effective policy и alignment.
+- Рекомендации SPF/DKIM/DMARC (RFC 9989), DNS/MX и проверки регистрации.
+- PTR (IPv4/IPv6), FCrDNS, DNSBL IPv4 (ZEN/SpamCop, контроль доступности).
+- TLS Inspector HTTPS/SMTP/POP3/IMAP (STARTTLS / implicit), данные и сроки сертификатов.
+- RDAP IANA и WHOIS fallback; сроки регистрации домена.
+- Дополнительные DNS-типы, известные сервисные имена и запросы точного DNS-имени.
+- Страница «Инструменты», отмена, журнал, копирование и TXT-экспорт.
+- Автономные проверки Tree Walk, reverse DNS и режимов TLS. Реальные сетевые тесты на Windows.
+
 ## 1.4.0 (2026-11-18)
 
 - Раздел DNS / Домен, DnsClient 1.8.0: A/AAAA/NS/SOA/TXT/MX, разрешение MX, Null MX, IDN, выбор резолвера.
