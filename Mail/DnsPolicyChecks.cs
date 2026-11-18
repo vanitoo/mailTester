@@ -102,7 +102,7 @@ namespace mailTester.Mail
                 record + "\n\n" + string.Join("\n", issues.Concat(notes)));
         }
 
-        private static bool Tags(string text, out Dictionary<string,string> tags)
+        internal static bool Tags(string text, out Dictionary<string,string> tags)
         {
             tags = new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
             foreach (string part in text.Split(';'))

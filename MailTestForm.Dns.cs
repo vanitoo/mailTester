@@ -85,7 +85,7 @@ namespace mailTester
             dnsGrid.SelectionChanged += (_, _) => {
                 if (dnsDetail != null)
                     dnsDetail.Text = dnsGrid.SelectedRows.Count > 0 && dnsGrid.SelectedRows[0].DataBoundItem is CheckFinding finding
-                        ? finding.Name + "\n" + finding.Summary + "\n\n" + finding.Detail : "";
+                        ? finding.Name + "\n" + finding.Summary + "\n\n" + finding.Detail + "\n\nРекомендации:\n" + DiagnosticAdvice.For(finding, dnsReport?.Domain) : "";
             };
             Span(panes, dnsGrid, 0, 0);
             dnsDetail = TextArea(true);
@@ -153,7 +153,7 @@ namespace mailTester
             sb.AppendLine($"Домен: {report.Domain}\nРезолвер: {report.Resolver}\nДата: {report.Timestamp:O}");
             sb.AppendLine("Статический анализ DNS. Не доказывает доставку или SPF/DKIM/DMARC PASS для письма.\n");
             foreach (var item in report.Findings)
-                sb.AppendLine($"[{item.Level}] {item.Section} | {item.Name}\n{item.Summary}\n{item.Detail}\n");
+                sb.AppendLine($"[{item.Level}] {item.Section} | {item.Name}\n{item.Summary}\n{item.Detail}\nРекомендации: {DiagnosticAdvice.For(item, report.Domain)}\n");
             return sb.ToString();
         }
 

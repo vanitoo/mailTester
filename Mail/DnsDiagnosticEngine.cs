@@ -11,13 +11,15 @@ namespace mailTester.Mail
 {
     public record DnsDiagnosticReport(string Domain, string Resolver, DateTimeOffset Timestamp, IReadOnlyList<CheckFinding> Findings);
 
-    public sealed class DnsDiagnosticEngine
+    public sealed partial class DnsDiagnosticEngine
     {
         private readonly LookupClient client;
         private readonly string resolver;
+        private readonly IPAddress serverAddress;
 
         public DnsDiagnosticEngine(IPAddress server = null)
         {
+            serverAddress = server;
             var options = server == null ? new LookupClientOptions() : new LookupClientOptions(server);
             options.UseCache = false;
             options.Timeout = TimeSpan.FromSeconds(4);
@@ -82,7 +84,7 @@ namespace mailTester.Mail
                 throw new ArgumentException("Слишком длинное имя для проверки политики.");
             var rows = new List<CheckFinding>();
             progress?.Report("Запросы A, AAAA, NS, SOA, TXT, MX");
-            QueryType[] types = { QueryType.A, QueryType.AAAA, QueryType.NS, QueryType.SOA, QueryType.TXT, QueryType.MX };
+            QueryType[] types = { QueryType.A, QueryType.AAAA, QueryType.NS, QueryType.SOA, QueryType.TXT, QueryType.CNAME, QueryType.SRV, (QueryType)257, (QueryType)43, (QueryType)48, QueryType.MX };
             var replies = await Task.WhenAll(types.Select(t => Query(domain, t, ct))).ConfigureAwait(false);
             foreach (var answer in replies) rows.Add(Raw(answer.Type == QueryType.MX ? "MX" : "DNS", answer));
             var mx = replies.Last();
@@ -124,8 +126,9 @@ namespace mailTester.Mail
             progress?.Report("Анализ SPF и DMARC");
             var txt = replies.Single(x => x.Type == QueryType.TXT);
             rows.Add(txt.Failed ? FailedPolicy("SPF", txt) : DnsPolicyChecks.Spf(domain, txt.Txt));
-            var dmarc = await Query("_dmarc." + domain, QueryType.TXT, ct).ConfigureAwait(false);
-            rows.Add(dmarc.Failed ? FailedPolicy("DMARC", dmarc) : DnsPolicyChecks.Dmarc(dmarc.Name, dmarc.Txt));
+            var dmarc = await DiscoverDmarcAsync(domain, ct).ConfigureAwait(false);
+            rows.Add(DmarcFinding(dmarc));
+            rows.AddRange(await InventoryExtrasAsync(domain, ct).ConfigureAwait(false));
             if (selectors.Length == 0) rows.Add(new("DKIM", domain, CheckLevel.Skipped, "Укажите DKIM-селектор", "Селектор s= и подписывающий домен d= можно взять из DKIM-Signature. Угадывание не выполняется."));
             else
             {
