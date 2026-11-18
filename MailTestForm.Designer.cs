@@ -132,7 +132,7 @@
             this.tbSender.Name = "tbSender";
             this.tbSender.Size = new System.Drawing.Size(420, 20);
             this.tbSender.TabIndex = 34;
-            this.tbSender.Text = "ed_test@tbc.su";
+            this.tbSender.Text = "";
             // 
             // lRecipient
             // 
@@ -149,19 +149,19 @@
             this.tbRecipient.Name = "tbRecipient";
             this.tbRecipient.Size = new System.Drawing.Size(420, 20);
             this.tbRecipient.TabIndex = 32;
-            this.tbRecipient.Text = "ed_test@tbc.su";
+            this.tbRecipient.Text = "";
             // 
             // cbSSL
             // 
             this.cbSSL.AutoSize = true;
             this.cbSSL.Checked = true;
             this.cbSSL.CheckState = System.Windows.Forms.CheckState.Checked;
-            this.cbSSL.Location = new System.Drawing.Point(417, 8);
+            this.cbSSL.Location = new System.Drawing.Point(405, 8);
             this.cbSSL.Name = "cbSSL";
             this.cbSSL.RightToLeft = System.Windows.Forms.RightToLeft.Yes;
             this.cbSSL.Size = new System.Drawing.Size(46, 17);
             this.cbSSL.TabIndex = 31;
-            this.cbSSL.Text = "SSL";
+            this.cbSSL.Text = "STARTTLS";
             this.cbSSL.UseVisualStyleBackColor = true;
             // 
             // lPassword
@@ -179,7 +179,8 @@
             this.tbPassword.Name = "tbPassword";
             this.tbPassword.Size = new System.Drawing.Size(100, 20);
             this.tbPassword.TabIndex = 29;
-            this.tbPassword.Text = "n9HXu0U3bPwZZLD67z9Z";
+            this.tbPassword.Text = "";
+            this.tbPassword.UseSystemPasswordChar = true;
             // 
             // lLogin
             // 
@@ -196,7 +197,7 @@
             this.tbLogin.Name = "tbLogin";
             this.tbLogin.Size = new System.Drawing.Size(100, 20);
             this.tbLogin.TabIndex = 27;
-            this.tbLogin.Text = "ed_test";
+            this.tbLogin.Text = "";
             // 
             // lPort
             // 
@@ -230,7 +231,7 @@
             this.tbServer.Name = "tbServer";
             this.tbServer.Size = new System.Drawing.Size(100, 20);
             this.tbServer.TabIndex = 23;
-            this.tbServer.Text = "post.tbc.su";
+            this.tbServer.Text = "";
             // 
             // lSubject
             // 
@@ -364,7 +365,8 @@
             this.tbPop3Pass.Name = "tbPop3Pass";
             this.tbPop3Pass.Size = new System.Drawing.Size(100, 20);
             this.tbPop3Pass.TabIndex = 38;
-            this.tbPop3Pass.Text = "n9HXu0U3bPwZZLD67z9Z";
+            this.tbPop3Pass.Text = "";
+            this.tbPop3Pass.UseSystemPasswordChar = true;
             // 
             // label2
             // 
@@ -381,7 +383,7 @@
             this.tbPop3Login.Name = "tbPop3Login";
             this.tbPop3Login.Size = new System.Drawing.Size(100, 20);
             this.tbPop3Login.TabIndex = 36;
-            this.tbPop3Login.Text = "ed_test";
+            this.tbPop3Login.Text = "";
             // 
             // label3
             // 
@@ -415,7 +417,7 @@
             this.tbPop3Server.Name = "tbPop3Server";
             this.tbPop3Server.Size = new System.Drawing.Size(100, 20);
             this.tbPop3Server.TabIndex = 32;
-            this.tbPop3Server.Text = "post.tbc.su";
+            this.tbPop3Server.Text = "";
             // 
             // bGetMail
             // 

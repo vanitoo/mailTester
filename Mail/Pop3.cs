@@ -145,7 +145,8 @@ namespace Tbc.Common.Mail.Pop3
             catch (Exception ex)
             {
                 //GlobalLoggin.CallError(ex);
-                TextfileLog.AddEntry(ex);
+                TextfileLog.AddError("POP3 connection failed: " + ex.GetType().Name);
+                Client.Dispose();
                 return false;
             }
             return true;

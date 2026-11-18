@@ -339,119 +339,96 @@ namespace Tbc.Common.Mail.Pop3.Mime
         }
 
         /// <summary>
-        /// Функция сохранения аттачментов в указанную директорию с переименованием
+        /// Г”ГіГ­ГЄГ¶ГЁГї Г±Г®ГµГ°Г Г­ГҐГ­ГЁГї Г ГІГІГ Г·Г¬ГҐГ­ГІГ®Гў Гў ГіГЄГ Г§Г Г­Г­ГіГѕ Г¤ГЁГ°ГҐГЄГІГ®Г°ГЁГѕ Г± ГЇГҐГ°ГҐГЁГ¬ГҐГ­Г®ГўГ Г­ГЁГҐГ¬
         /// </summary>
         /// <param name="path"></param>
         /// <param name="messagNumber"></param>
         /// <param name="emailError"></param>
 
-        public bool SaveAttachments(string path, int messagNumber, EmailError emailError, int idMail, out SortedDictionary<string, string> attName,out string errorMsg)
+        public bool SaveAttachments(string path, int messagNumber, EmailError emailError, int idMail, out SortedDictionary<string, string> attName, out string errorMsg)
         {
-            errorMsg = null;
             attName = new SortedDictionary<string, string>();
-            string filename = null, attacmentName = null, attachmentNumber = null;
+            errorMsg = null;
             try
             {
-                if (!Directory.Exists(path)) { Directory.CreateDirectory(path); }
-
-                for (int j = 0; j < this.Attachments.Count; j++)
+                for (int j = 0; j < Attachments.Count; j++)
                 {
-                    Directory.CreateDirectory(path);
-                    attachmentNumber = (j + 1).ToString("00");
-                    //Пытаемся раскодировать имя прикрепления 
-                    //переименовываем прикрепление именем idEmail + номер прикрепления
-
-                    try
-                    {
-                        attacmentName = MyDecoder.ConvertToWin(this.Attachments[j].Name);
-                        filename = MyDecoder.FileReName(attacmentName, idMail.ToString("000000") + attachmentNumber);
-                        attName.Add(filename, attacmentName);
-                    }
-                    catch
-                    {
-                        filename = idMail.ToString("000000") + attachmentNumber + ".xls";
-                        attName.Add(filename, null);
-                        emailError.CallError("Ошибка имени прикрепления! Сообщение № {0} от {1},файл переименован в {2}", messagNumber, this.From.Address, filename);
-                    }
-                    using (FileStream writeFileStream = new FileStream(path + "\\" + filename, FileMode.OpenOrCreate, FileAccess.ReadWrite))
-                    {
-                        try
-                        {
-                            int bytesCopied;
-                            byte[] attachmentByteBuffer = new byte[(int)this.Attachments[j].ContentStream.Length];
-                            this.Attachments[j].ContentStream.Seek(0, SeekOrigin.Begin);
-                            bytesCopied = this.Attachments[j].ContentStream.Read(attachmentByteBuffer, 0, attachmentByteBuffer.Length); //copy the attachment to the byte array 
-                            if (bytesCopied != attachmentByteBuffer.Length)
-                            {
-                                throw new ApplicationException("Tried to copy " + attachmentByteBuffer.Length.ToString() + " bytes from attachment, but received " + bytesCopied.ToString() + " bytes instead.");
-                            }
-                            writeFileStream.Write(attachmentByteBuffer, 0, bytesCopied);
-
-                        }
-
-                        catch (Exception e)
-                        {
-                            errorMsg = "Ошибка сохранения прикрепления! Сообщение № " + messagNumber + " от " + this.From.Address + " , " + e.Message;
-                            emailError.CallError("Ошибка сохранения прикрепления! Сообщение № {0} от {1},{2}", messagNumber, this.From.Address, e.Message);
-                            return false;
-                        }
-                    }
+                    var attachment = Attachments[j];
+                    string original = ValidateAttachmentName(MyDecoder.ConvertToWin(attachment.Name));
+                    string name = idMail.ToString("000000") + (j + 1).ToString("00") + System.IO.Path.GetExtension(original);
+                    string savedName = SaveAttachmentSafely(path, name, attachment.ContentStream);
+                    attName.Add(savedName, original);
                 }
                 return true;
             }
-            catch (Exception ex) { errorMsg = ex.Message; return false; }
+            catch (Exception ex)
+            {
+                errorMsg = ex.Message;
+                emailError?.CallError("Attachment save failed (message {0}): {1}", messagNumber, errorMsg);
+                return false;
+            }
         }
-        /// <summary>
-        /// Функция сохранения аттачментов в указанную директорию
-        /// </summary>
-        /// <param name="path"></param>
-        /// <param name="messagNumber"></param>
-        /// <param name="emailError"></param>
 
         public bool SaveAttachments(string path, out string errorMsg)
         {
             errorMsg = null;
-            string filename = null;
             try
             {
-                if (!Directory.Exists(path)) { Directory.CreateDirectory(path); }
-
-                for (int j = 0; j < this.Attachments.Count; j++)
-                {
-                    Directory.CreateDirectory(path);
-                    filename = MyDecoder.ConvertToWin(this.Attachments[j].Name);
-                    using (FileStream writeFileStream = new FileStream(path + "\\" + filename, FileMode.OpenOrCreate, FileAccess.ReadWrite))
-                    {
-                        try
-                        {
-                            int bytesCopied;
-                            byte[] attachmentByteBuffer = new byte[(int)this.Attachments[j].ContentStream.Length];
-                            this.Attachments[j].ContentStream.Seek(0, SeekOrigin.Begin);
-                            bytesCopied = this.Attachments[j].ContentStream.Read(attachmentByteBuffer, 0, attachmentByteBuffer.Length); //copy the attachment to the byte array 
-                            if (bytesCopied != attachmentByteBuffer.Length)
-                            {
-                                errorMsg = "Tried to copy " + attachmentByteBuffer.Length.ToString() + " bytes from attachment, but received " + bytesCopied.ToString() + " bytes instead.";
-                                return false;
-                            }
-                            writeFileStream.Write(attachmentByteBuffer, 0, bytesCopied);
-
-                        }
-
-                        catch (Exception e)
-                        {
-                            errorMsg = "Ошибка сохранения прикрепления! От " + this.From.Address + " , " + e.Message;
-                            return false;
-                        }
-                    }
-                }
+                foreach (Attachment attachment in Attachments)
+                    SaveAttachmentSafely(path, MyDecoder.ConvertToWin(attachment.Name), attachment.ContentStream);
                 return true;
             }
-            catch (Exception ex) { errorMsg = ex.Message; return false; }
+            catch (Exception ex)
+            {
+                errorMsg = ex.Message;
+                return false;
+            }
         }
 
+        private static string ValidateAttachmentName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name) || name == "." || name == ".." ||
+                name.IndexOfAny(new[] { '/', '\\', ':' }) >= 0 ||
+                name.IndexOfAny(System.IO.Path.GetInvalidFileNameChars()) >= 0 ||
+                name.EndsWith(".") || name.EndsWith(" "))
+                throw new IOException("РќРµРґРѕРїСѓСЃС‚РёРјРѕРµ РёРјСЏ РІР»РѕР¶РµРЅРёСЏ.");
 
+            string device = name.Split('.')[0].TrimEnd().ToUpperInvariant();
+            if (device == "CON" || device == "PRN" || device == "AUX" || device == "NUL" ||
+                device == "CONIN$" || device == "CONOUT$" ||
+                System.Text.RegularExpressions.Regex.IsMatch(device, @"^(COM|LPT)[0-9В№ВІВі]$"))
+                throw new IOException("Р—Р°СЂРµР·РµСЂРІРёСЂРѕРІР°РЅРЅРѕРµ РёРјСЏ РІР»РѕР¶РµРЅРёСЏ.");
+            return name;
+        }
 
+        private static string SaveAttachmentSafely(string directory, string name, Stream content)
+        {
+            name = ValidateAttachmentName(name);
+            string root = System.IO.Path.GetFullPath(directory);
+            Directory.CreateDirectory(root);
+            string rootPrefix = System.IO.Path.EndsInDirectorySeparator(root) ? root : root + System.IO.Path.DirectorySeparatorChar;
+            string stem = System.IO.Path.GetFileNameWithoutExtension(name);
+            string extension = System.IO.Path.GetExtension(name);
 
+            for (int i = 0; i < 10000; i++)
+            {
+                string candidate = i == 0 ? name : stem + " (" + i + ")" + extension;
+                string target = System.IO.Path.GetFullPath(System.IO.Path.Combine(root, candidate));
+                if (!target.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
+                    throw new IOException("Р’Р»РѕР¶РµРЅРёРµ РІС‹С…РѕРґРёС‚ Р·Р° РіСЂР°РЅРёС†С‹ РІС‹Р±СЂР°РЅРЅРѕР№ РїР°РїРєРё.");
+
+                FileStream output;
+                try { output = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None); }
+                catch (IOException) when (File.Exists(target) || Directory.Exists(target)) { continue; }
+
+                using (output)
+                {
+                    if (content.CanSeek) content.Position = 0;
+                    content.CopyTo(output);
+                }
+                return candidate;
+            }
+            throw new IOException("РќРµ СѓРґР°Р»РѕСЃСЊ РїРѕРґРѕР±СЂР°С‚СЊ СЃРІРѕР±РѕРґРЅРѕРµ РёРјСЏ РІР»РѕР¶РµРЅРёСЏ.");
+        }
     }
-
 }

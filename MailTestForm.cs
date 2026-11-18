@@ -26,71 +26,102 @@ namespace mailTester {
 
         private void bSend_Click(object sender, EventArgs e) {
             try {
-                sendMail(tbSender.Text, tbRecipient.Text, tbSubject.Text, rtbMessage.Text, tbAttachment.Text, tbServer.Text, int.Parse(tbPort.Text), tbLogin.Text, tbPassword.Text);
+                if (!ConfirmPlaintext(cbSSL.Checked)) return;
+                sendMail(tbSender.Text, tbRecipient.Text, tbSubject.Text, rtbMessage.Text, tbAttachment.Text, tbServer.Text, int.Parse(tbPort.Text), tbLogin.Text, tbPassword.Text, cbSSL.Checked);
                 rtbStatus.AppendText(string.Format("{0} | Сообщение '{1}' отправлено\n", DateTime.Now, tbSubject.Text));
             }
             catch (Exception exp) {
-                rtbStatus.AppendText(string.Format("{0} | Ошибка: {1}\n", DateTime.Now, exp.Message));
+                rtbStatus.AppendText(string.Format("{0} | Ошибка: {1}\n", DateTime.Now, Redact(exp.Message, tbPassword.Text)));
             }
         }
 
-        public static void sendMail(string from, string to, string subject, string message, string attachmentPath, string host, int port, string userName, string pass) {
-            if (string.IsNullOrEmpty(from) || string.IsNullOrEmpty(to) || string.IsNullOrEmpty(host) || string.IsNullOrEmpty(userName) || string.IsNullOrEmpty(pass))
-                throw new Exception("Одно из ключевых полей осталось не заполненым");
-            MailMessage mailMessage = new MailMessage(from, to, subject, message);
-            mailMessage.SubjectEncoding = Encoding.UTF8;
-            if (!string.IsNullOrEmpty(attachmentPath)) {
-                var reader = new FileStream(attachmentPath, FileMode.Open, FileAccess.Read);
-                var attachmentName = attachmentPath.Split(new char[] { '\\', }, StringSplitOptions.RemoveEmptyEntries).Last();
-                mailMessage.Attachments.Add(new Attachment(reader, attachmentName));
-            }
-            SmtpClient smtpClient = new SmtpClient(host, port) {
-                Credentials = new NetworkCredential(userName, pass)
-            };
-            if (port == 587)
-                smtpClient.EnableSsl = true;
-            else {
-                smtpClient.EnableSsl = false;
+        private bool ConfirmPlaintext(bool encrypted) {
+            return encrypted || MessageBox.Show(this,
+                "Шифрование отключено. Логин, пароль и данные письма могут передаваться открытым текстом. Продолжить?",
+                "Небезопасное подключение", MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+        }
+
+        private static string Redact(string message, string password) {
+            if (string.IsNullOrEmpty(password) || message == null) return message;
+            return message.Replace(password, "[REDACTED]")
+                .Replace(Convert.ToBase64String(Encoding.UTF8.GetBytes(password)), "[REDACTED]");
+        }
+
+        private static void ValidatePort(int port) {
+            if (port < 1 || port > 65535) throw new ArgumentOutOfRangeException(nameof(port));
+        }
+
+        public static void sendMail(string from, string to, string subject, string message, string attachmentPath, string host, int port, string userName, string pass, bool startTls = true) {
+            ValidatePort(port);
+            if (port == 465)
+                throw new NotSupportedException("SMTP implicit TLS (465) пока не поддерживается. Используйте STARTTLS, например порт 587.");
+            if (string.IsNullOrWhiteSpace(from) || string.IsNullOrWhiteSpace(to) || string.IsNullOrWhiteSpace(host) || string.IsNullOrWhiteSpace(userName) || string.IsNullOrEmpty(pass))
+                throw new ArgumentException("Заполните отправителя, получателя, сервер, логин и пароль.");
+            using (var mailMessage = new MailMessage(from, to, subject, message))
+            using (var smtpClient = new SmtpClient(host, port)) {
+                mailMessage.SubjectEncoding = Encoding.UTF8;
+                mailMessage.BodyEncoding = Encoding.UTF8;
+                if (!string.IsNullOrWhiteSpace(attachmentPath))
+                    mailMessage.Attachments.Add(new Attachment(attachmentPath));
                 smtpClient.UseDefaultCredentials = false;
+                smtpClient.Credentials = new NetworkCredential(userName, pass);
+                smtpClient.EnableSsl = startTls;
+                smtpClient.Timeout = 60000;
+                smtpClient.Send(mailMessage);
             }
-            smtpClient.Send(mailMessage);
-            mailMessage.Dispose();
         }
 
         private void bGetMail_Click(object sender, EventArgs e) {
             try {
+                if (!ConfirmPlaintext(cbPop3SSL.Checked)) return;
                 var messages = getMessages(tbPop3Server.Text, int.Parse(tbPop3Port.Text), cbPop3SSL.Checked, tbPop3Login.Text, tbPop3Pass.Text);
                 rtbPop3Status.AppendText(string.Format("{0} | Получено сообщений: {1}\n", DateTime.Now, messages.Count));
+                var previous = dgvMessages.DataSource as IList<RxMailMessage>;
                 dgvMessages.DataSource = messages;
+                if (previous != null)
+                    foreach (var message in previous) message.Dispose();
             }
             catch (Exception exp) {
-                rtbPop3Status.AppendText(string.Format("{0} | Ошибка: {1}\n", DateTime.Now, exp.Message));
+                rtbPop3Status.AppendText(string.Format("{0} | Ошибка: {1}\n", DateTime.Now, Redact(exp.Message, tbPop3Pass.Text)));
             }
 
         }
 
         public static IList<RxMailMessage> getMessages(string Server, int Port, bool SSL, string UserName, string Passw) {
-            Pop3 pop = new Pop3(Server, Port, SSL, UserName, Passw);
-            if (SSL)
-            {
-                pop.
-            }
-            pop.Connect();
-            pop.GetMailboxStats();
+            ValidatePort(Port);
+            if (string.IsNullOrWhiteSpace(Server) || string.IsNullOrWhiteSpace(UserName) || string.IsNullOrEmpty(Passw))
+                throw new ArgumentException("Заполните сервер, логин и пароль.");
+            if (Port == 995 && !SSL)
+                throw new ArgumentException("Порт 995 требует SSL/TLS.");
             var messages = new List<RxMailMessage>();
-            for (int i = pop.NumberOfMailsInMailbox; i > 0; i--) {
-                var message = new RxMailMessage();
-                pop.RecieveMessage(i, out message);
-                message.HasAttachment = message.Attachments.Count > 0 ? true : false;
-                messages.Add(message);
+            using (var client = new Pop3MimeClient(Server, Port, SSL, UserName, Passw)) {
+                client.ReadTimeout = 60000;
+                try {
+                    client.Connect();
+                    if (!client.GetMailboxStats(out int count, out int size))
+                        throw new InvalidOperationException("Не удалось получить статистику почтового ящика.");
+                    for (int i = count; i > 0; i--) {
+                        if (!client.GetEmail(i, out var message) || message == null) {
+                            message?.Dispose();
+                            throw new InvalidOperationException("Не удалось получить письмо № " + i);
+                        }
+                        message.HasAttachment = message.Attachments.Count > 0;
+                        messages.Add(message);
+                    }
+                    client.Disconnect();
+                    return messages;
+                }
+                catch {
+                    foreach (var message in messages) message.Dispose();
+                    throw;
+                }
             }
-            pop.Disconnect();
-            return messages;
         }
 
         private void dgvMessages_SelectionChanged(object sender, EventArgs e) {
             if (dgvMessages.SelectedRows.Count <= 0) return;
-            rtbPop3Message.Text = dgvMessages.SelectedRows[0].Cells["Body"].Value.ToString();
+            rtbPop3Message.Text = Convert.ToString(dgvMessages.SelectedRows[0].Cells["Body"].Value);
             bSaveAttachment.Visible = (bool)dgvMessages.SelectedRows[0].Cells["HasAttachment"].Value;
         }
 
@@ -125,12 +156,13 @@ namespace mailTester {
         }
 
         private void bSaveAttachment_Click(object sender, EventArgs e) {
+            if (dgvMessages.SelectedRows.Count == 0) return;
             var dialog = selectAttachmentFolder.ShowDialog();
             if (dialog == DialogResult.Cancel) return;
             var message = (RxMailMessage)dgvMessages.SelectedRows[0].DataBoundItem;
             string errText = default(string);
-            message.SaveAttachments(selectAttachmentFolder.SelectedPath, out errText);
-            var logText = string.IsNullOrEmpty(errText)
+            bool saved = message.SaveAttachments(selectAttachmentFolder.SelectedPath, out errText);
+            var logText = saved
                 ? string.Format("{0} | В каталог {1} Сохранено вложений {2} : {3}\n",
                     DateTime.Now, selectAttachmentFolder.SelectedPath, message.Attachments.Count,
                     string.Join(", ", message.Attachments.Select(m => m.Name).ToArray()))

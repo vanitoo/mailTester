@@ -125,7 +125,7 @@ namespace Tbc.Common.Mail.Pop3.Mime
     /// <summary>
     /// provides access to emails on a POP3 Server
     /// </summary>
-    public class Pop3MailClient
+    public class Pop3MailClient : IDisposable
     {
         #region protected fields
         /// <summary>
@@ -163,7 +163,7 @@ namespace Tbc.Common.Mail.Pop3.Mime
         protected Pop3ConnectionStateEnum pop3ConnectionState = Pop3ConnectionStateEnum.Disconnected;
         #endregion
         //Events
-        #region Ñîáûòèÿ
+        #region Ã‘Ã®Ã¡Ã»Ã²Ã¨Ã¿
 
         /// <summary>
         /// Called whenever POP3 server doesn't react as expected, but no runtime error is thrown.
@@ -188,7 +188,7 @@ namespace Tbc.Common.Mail.Pop3.Mime
             }
             if (Warning != null)
             {
-                Warning(methodName + ": " + warningText, response);
+                Warning(RedactSecret(methodName + ": " + warningText), RedactSecret(response));
             }
             CallTrace("!! {0}", warningText);
         }
@@ -204,11 +204,17 @@ namespace Tbc.Common.Mail.Pop3.Mime
         /// </summary>
         /// <param name="text">string to be traced</param>
         /// <param name="parameters"></param>
+        protected string RedactSecret(string text)
+        {
+            if (string.IsNullOrEmpty(password) || text == null) return text;
+            return text.Replace(password, "[REDACTED]");
+        }
+
         protected void CallTrace(string text, params object[] parameters)
         {
             if (Trace != null)
             {
-                Trace(DateTime.Now.ToString("hh:mm:ss ") + popServer + " " + string.Format(text, parameters));
+                Trace(RedactSecret(DateTime.Now.ToString("hh:mm:ss ") + popServer + " " + string.Format(text, parameters)));
             }
         }
 
@@ -305,7 +311,7 @@ namespace Tbc.Common.Mail.Pop3.Mime
         #endregion
 
         // Methods
-        #region protected Ìåòîäû
+        #region protected ÃŒÃ¥Ã²Ã®Ã¤Ã»
 
         /// <summary>
         /// set POP3 connection state
@@ -379,7 +385,7 @@ namespace Tbc.Common.Mail.Pop3.Mime
         {
             //send command to server
             byte[] commandBytes = System.Text.Encoding.ASCII.GetBytes((command + CRLF).ToCharArray());
-            CallTrace("Tx '{0}'", command);
+            CallTrace("Tx '{0}'", command.StartsWith("PASS ", StringComparison.OrdinalIgnoreCase) || command.StartsWith("USER ", StringComparison.OrdinalIgnoreCase) ? "[AUTH REDACTED]" : command);
             bool isSupressThrow = false;
             try
             {
@@ -429,7 +435,7 @@ namespace Tbc.Common.Mail.Pop3.Mime
                     throw new Pop3Exception("Server " + popServer + " has not responded, timeout has occurred.");
                 }
             }
-            CallTrace("Rx '{0}'", response);
+            CallTrace("Rx '{0}'", pop3ConnectionState == Pop3ConnectionStateEnum.Authorization ? "[AUTH RESPONSE REDACTED]" : response);
             return (response.Length > 0 && response[0] == '+');
         }
 
@@ -457,7 +463,7 @@ namespace Tbc.Common.Mail.Pop3.Mime
                             Connect();
 
                             CallTrace("   reconnect successful, try to resend command");
-                            CallTrace("Tx '{0}'", command);
+                            CallTrace("Tx '{0}'", command.StartsWith("PASS ", StringComparison.OrdinalIgnoreCase) || command.StartsWith("USER ", StringComparison.OrdinalIgnoreCase) ? "[AUTH REDACTED]" : command);
                             pop3Stream.Write(commandBytes, 0, commandBytes.Length);
                             pop3Stream.Flush();
                             return true;
@@ -571,6 +577,10 @@ namespace Tbc.Common.Mail.Pop3.Mime
             this.port = Port;
             this.useSSL = useSSL;
             this.username = Username;
+            if (Username == null || Password == null ||
+                Username.IndexOfAny(new[] { '\r', '\n' }) >= 0 ||
+                Password.IndexOfAny(new[] { '\r', '\n' }) >= 0)
+                throw new ArgumentException("POP3 credentials must not contain line breaks.");
             this.password = Password;
         }
 
@@ -667,14 +677,14 @@ namespace Tbc.Common.Mail.Pop3.Mime
                 if (!executeCommand("USER " + username, out response))
                 {
                     setPop3ConnectionState(Pop3ConnectionStateEnum.Disconnected);
-                    throw new Pop3Exception("Server " + popServer + " doesn't accept username '" + username + "'.\nMessage: " + response);
+                    throw new Pop3Exception("POP3 server rejected USER authentication.");
                 }
 
                 //send password
                 if (!executeCommand("PASS " + password, out response))
                 {
                     setPop3ConnectionState(Pop3ConnectionStateEnum.Disconnected);
-                    throw new Pop3Exception("Server " + popServer + " doesn't accept password '" + password + "' for user '" + username + "'.\nMessage: " + response);
+                    throw new Pop3Exception("POP3 server rejected PASS authentication.");
                 }
 
                 setPop3ConnectionState(Pop3ConnectionStateEnum.Connected);
@@ -712,12 +722,7 @@ namespace Tbc.Common.Mail.Pop3.Mime
                 finally
                 {
                     //close connection
-                    if (pop3Stream != null)
-                    {
-                        pop3Stream.Close();
-                    }
-
-                    pop3StreamReader.Close();
+                    Dispose();
                 }
             }
         }
@@ -733,6 +738,23 @@ namespace Tbc.Common.Mail.Pop3.Mime
         /// </summary>
         /// <param name="msg_number"></param>
         /// <returns></returns>
+        public void Dispose()
+        {
+            try { pop3StreamReader?.Dispose(); }
+            finally
+            {
+                try { pop3Stream?.Dispose(); }
+                finally
+                {
+                    serverTcpConnection?.Dispose();
+                    pop3StreamReader = null;
+                    pop3Stream = null;
+                    serverTcpConnection = null;
+                    pop3ConnectionState = Pop3ConnectionStateEnum.Disconnected;
+                }
+            }
+        }
+
         public bool DeleteEmail(int msg_number)
         {
             EnsureState(Pop3ConnectionStateEnum.Connected);

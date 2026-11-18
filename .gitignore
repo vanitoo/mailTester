@@ -18,3 +18,16 @@ obj/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local logs, mail data and secrets
+Logs/
+Log.txt
+MailLog.txt
+*.eml
+*.pfx
+*.p12
+.env
+.env.*
+!.env.example
+publish/
+artifacts/
