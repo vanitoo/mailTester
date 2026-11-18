@@ -85,7 +85,6 @@ namespace mailTester
                 args.CellStyle.SelectionForeColor = AuditReportStyle.ColorFor(finding.Level);
                 args.Value = AuditReportStyle.Label(finding.Level);args.FormattingApplied=true;
             };
-            };
             dnsGrid.SelectionChanged += (_, _) => {
                 if (dnsDetail != null)
                     AuditReportStyle.Show(dnsDetail,dnsGrid.SelectedRows.Count>0 && dnsGrid.SelectedRows[0].DataBoundItem is CheckFinding finding
