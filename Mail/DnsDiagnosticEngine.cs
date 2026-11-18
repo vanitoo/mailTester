@@ -67,7 +67,7 @@ namespace mailTester.Mail
         private static CheckFinding Raw(string section, Answer answer)
         {
             int count = answer.Records.Count(x => (int)x.RecordType == (int)answer.Type);
-            return new(section, answer.Name + " " + answer.Type, answer.Failed ? CheckLevel.Error : count == 0 ? CheckLevel.Info : CheckLevel.Ok,
+            return new(section, answer.Name + " " + answer.Type, answer.Failed ? CheckLevel.Error : answer.Code == 3 || count == 0 ? CheckLevel.Info : CheckLevel.Ok,
                 answer.Failed ? "Ошибка DNS" : answer.Code == 3 ? "NXDOMAIN" : count == 0 ? "Нет записи (NODATA)" : $"Записей: {count}", answer.Text);
         }
 
@@ -90,7 +90,15 @@ namespace mailTester.Mail
             if (!mx.Failed)
             {
                 if (mx.Code == 3) rows.Add(new("MX", domain, CheckLevel.Error, "Домен не существует по ответу MX", "NXDOMAIN."));
-                else if (hosts.Length == 0) rows.Add(new("MX", domain, CheckLevel.Warning, "Явного MX нет", "Для SMTP возможен implicit MX через A/AAAA; это не проверка доступности сервера."));
+                else if (hosts.Length == 0)
+                {
+                    var addressReplies = replies.Where(x => x.Type == QueryType.A || x.Type == QueryType.AAAA).ToArray();
+                    bool hasAddress = addressReplies.Any(x => !x.Failed && x.Code == 0 && x.Records.Any(r => (int)r.RecordType == (int)x.Type));
+                    bool incomplete = addressReplies.Any(x => x.Failed);
+                    rows.Add(new("MX", domain, hasAddress || incomplete ? CheckLevel.Warning : CheckLevel.Error,
+                        hasAddress ? "Явного MX нет: возможен implicit MX" : incomplete ? "Явного MX нет, fallback не проверен" : "Нет MX и адресов для implicit MX",
+                        "SMTP-доступность не проверялась.\n" + string.Join("\n\n", addressReplies.Select(x => x.Type + ":\n" + x.Text))));
+                }
                 else if (hosts.Any(x => x.Exchange.Value.TrimEnd('.').Length == 0))
                 {
                     bool valid = hosts.Length == 1 && hosts[0].Preference == 0;

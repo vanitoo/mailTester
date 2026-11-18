@@ -56,7 +56,7 @@ namespace mailTester.Mail
             foreach (string raw in terms)
             {
                 string term = raw.ToLowerInvariant();
-                if (term.Contains('='))
+                if (Regex.IsMatch(term, @"^[a-z][a-z0-9_.-]*="))
                 {
                     if (term.StartsWith("redirect="))
                     {
@@ -91,6 +91,7 @@ namespace mailTester.Mail
             if (unreachable) notes.Add("Механизмы после all недостижимы.");
             if (all == "+all") notes.Add("Любой отправитель разрешён (+all).");
             if (all == "?all") notes.Add("Нейтральная политика (?all).");
+            if (all == "~all") notes.Add("Мягкий отказ (~all), не жёсткий запрет.");
             if (all == null && redirect == null) notes.Add("Нет явного all или redirect.");
             if (redirect != null && all != null) notes.Add("redirect игнорируется при наличии all.");
             if (lookupTerms > 10) notes.Add("Возможное превышение лимита 10 DNS-термов; фактическое число зависит от пути вычисления.");
@@ -123,10 +124,14 @@ namespace mailTester.Mail
                 return new("DMARC", name, CheckLevel.Error, "Некорректные или повторные теги", record);
             var issues = new List<string>();
             foreach (string tag in new[] { "p", "sp", "np" })
-                if ((tag == "p" || tags.ContainsKey(tag)) && (!tags.TryGetValue(tag, out var value) || !new[] { "none", "quarantine", "reject" }.Contains(value)))
+            {
+                if ((tag == "p" || tags.ContainsKey(tag)) && (!tags.TryGetValue(tag, out var policyValue) || !new[] { "none", "quarantine", "reject" }.Contains(policyValue)))
                     issues.Add("Отсутствует или некорректна политика " + tag + ".");
+            }
             foreach (string tag in new[] { "adkim", "aspf" })
-                if (tags.TryGetValue(tag, out var value) && value != "r" && value != "s") issues.Add("Недопустимый режим " + tag + ".");
+            {
+                if (tags.TryGetValue(tag, out var alignment) && alignment != "r" && alignment != "s") issues.Add("Недопустимый режим " + tag + ".");
+            }
             if (tags.TryGetValue("t", out var testing) && testing != "y" && testing != "n") issues.Add("Недопустимое значение t.");
             if (issues.Count > 0) return new("DMARC", name, CheckLevel.Error, "Проблемы с тегами политики", record + "\n" + string.Join("\n", issues));
             string policy = tags["p"];

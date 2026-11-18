@@ -115,7 +115,7 @@ namespace mailTester
             AddNav(sidebar, 4, "POP3 / IMAP", pageGet, "POP3 / IMAP / Получение", "Проверка входящей почты и просмотр сообщений");
             AddNav(sidebar, 5, "DNS  ·  Домен", pageDns, "DNS / Домен", "DNS, MX, SPF, DKIM и DMARC");
             AddNav(sidebar, 6, "Журнал", pageJournal, "Журнал диагностики", "События текущей сессии без паролей и сырого AUTH");
-            sidebar.Controls.Add(TextLabel("   TLS 1.2 / 1.4", 10, Color.FromArgb(134, 239, 172)), 0, 8);
+            sidebar.Controls.Add(TextLabel("   TLS 1.2 / 1.3", 10, Color.FromArgb(134, 239, 172)), 0, 8);
             sidebar.Controls.Add(TextLabel("   v1.4.0  •  .NET 10", 9, Color.FromArgb(148, 163, 184)), 0, 9);
 
             ShowPage(pageOverview, "Обзор", "Диагностика и результаты текущей сессии");
@@ -478,7 +478,7 @@ namespace mailTester
             bClearJournal = MakeButton("Очистить", false);
             bCopyJournal.Click += (_, _) => CopyJournal();
             bExportJournal.Click += (_, _) => ExportJournal();
-            bClearJournal.Click += (_, _) => { journalBox.Clear(); rtbStatus.Clear(); rtbPop3Status.Clear(); };
+            bClearJournal.Click += (_, _) => { journalBox.Clear(); rtbStatus.Clear(); rtbPop3Status.Clear(); dnsLog.Clear(); };
             Span(toolbar, bCopyJournal, 1, 0); Span(toolbar, bExportJournal, 2, 0); Span(toolbar, bClearJournal, 3, 0);
             Span(card, toolbar, 0, 0);
             journalBox = TextArea(true, true);

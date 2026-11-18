@@ -53,6 +53,7 @@ try
     Assert(DnsPolicyChecks.Spf("example.invalid", new[] { "v=spf1 ip4:192.0.2.0/24 -all" }).Level == CheckLevel.Ok, "SPF basic");
     Assert(DnsPolicyChecks.Spf("example.invalid", new[] { "v=spf1 -all", "v=spf1 ~all" }).Level == CheckLevel.Error, "SPF duplicate");
     Assert(DnsPolicyChecks.Spf("example.invalid", new[] { "v=spf1 +all" }).Level == CheckLevel.Warning, "SPF permissive");
+    Assert(DnsPolicyChecks.Spf("example.invalid", new[] { "v=spf1 ~all" }).Level == CheckLevel.Warning, "SPF softfail");
     Assert(DnsPolicyChecks.Spf("example.invalid", new[] { "v=spf1 ip4:192.0.2.1/99 -all" }).Level == CheckLevel.Error, "SPF invalid CIDR");
     Assert(DnsPolicyChecks.Dmarc("_dmarc.example.invalid", new[] { "v=DMARC1; p=reject; rua=mailto:reports@example.invalid" }).Level == CheckLevel.Ok, "DMARC reject");
     Assert(DnsPolicyChecks.Dmarc("_dmarc.example.invalid", new[] { "v=DMARC1; p=reject; t=y" }).Level == CheckLevel.Warning, "DMARC test mode");
